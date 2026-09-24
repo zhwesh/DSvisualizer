@@ -1,2 +1,2 @@
 # DSvisualizer
-datastructure visulizer
+datastructure visualizer
