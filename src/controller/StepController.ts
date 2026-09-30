@@ -26,8 +26,7 @@ export const StepStatus = {
  *      5.其余特殊情况（用户中断当前复合操作），同4——强制将当前复合操作执行完毕再进行跳转
  */
 export class StepController {
-
-    
+    // 状态
     private status: number = 0;
     // 动画播放的时间间隔（秒）
     private timeInterval: number = 1;
