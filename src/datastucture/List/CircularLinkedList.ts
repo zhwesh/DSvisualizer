@@ -1,106 +1,34 @@
 import { ErrorMessage, MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
-import { DataNode } from "../DataNode";
+import { CircularLinkedListNode } from "../../node/LinkedNode/impl/CircularLinkedNode"
+import { create } from "../../node/factory";
 
 let messageController = MessageController.getMessageController();
 let stepController = StepController.getStepController();
 
 /**
- * 单链表节点
+ * 线性表（循环链表实现）
  */
-export class ListNode extends DataNode {
-    public val: number;
-    public next: ListNode | null;
-
-    constructor(val: number, next: ListNode | null) {
-        super();
-        this.val = val;
-        this.next = next;
-    }
-}
-
-/**
- * 线性表（单链表实现）
- */
-export class LinkedList {
-    /**
-     * 设置节点的值
-     * 
-     * 动画效果：改变节点值
-     * 
-     * @param node 待修改节点
-     * @param val 新值
-     */
-    public static _set_value(node: ListNode, val: number): void {
-        node.val = val;
-    }
-
-    /**
-     * 设置某节点的后继节点
-     * 
-     * 动画效果：node指向next
-     * 
-     * @param node 待修改节点
-     * @param next 后继节点
-     */
-    public static _set_next(node: ListNode, next: ListNode | null): void {
-        node.next = next;
-    }
-
-    /**
-     * 创建新节点
-     * 
-     * 动画效果：出现一个新节点
-     * 
-     * @param val 新节点的值
-     * @returns 新节点
-     */
-    public static _create_node(val: number): ListNode {
-        return new ListNode(val, null);
-    }
-
-    /**
-     * 删除节点
-     * 
-     * 动画效果：对应节点消失
-     * 
-     * @param node 要删除的节点
-     */
-    public static _delete_node(node: ListNode): void {
-        node.next = null;
-    }
-
-    /**
-     * 清空链表
-     * 
-     * 动画效果：链表linkedList消失
-     * 
-     * @param linkedList 要清空的链表
-     */
-    public static _clear(linkedList: LinkedList): void {
-        linkedList.head = null;
-        linkedList.sz = 0;
-    }
-
-    /************************************************** */
-
-    private head: ListNode | null;
+export class CircularLinkedList {
+    private head: CircularLinkedListNode;   // 哨兵节点，不储存数据
     private sz: number;
 
     constructor() {
-        this.head = null;
+        this.head = new CircularLinkedListNode(null, null);
+        this.head.next = this.head;
         this.sz = 0;
     }
 
     // 清除所有元素
     public clear(): void {
-        if (this.head === null) {
+        if (this.head.next === this.head) {
             messageController.message("链表已经为空", MessageType.WARNING);
             return;
         }
 
         messageController.message("清除所有元素", MessageType.INFO);
-        LinkedList._clear(this);
+        this.head.next = this.head;
+        this.sz = 0;
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }
@@ -116,12 +44,12 @@ export class LinkedList {
     }
 
     // 获取索引为idx的节点
-    private getNode(idx: number): ListNode | null {
+    private getNode(idx: number): CircularLinkedListNode | null {
         if (idx < 0 || idx >= this.sz) {
             messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
             return null;
         }
-        let tmp = this.head!;
+        let tmp = this.head.next!;
         while (idx-- > 0) {
             tmp = tmp.next!;
         }
@@ -138,7 +66,6 @@ export class LinkedList {
         if (node === null) {
             return null;
         }
-
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return node.val;
     }
@@ -154,7 +81,7 @@ export class LinkedList {
             return;
         }
 
-        LinkedList._set_value(node, val);
+        node._set_value(val);
         messageController.message(SuccessMessage.SET_SUCCESS, MessageType.SUCCESS);
     }
 
@@ -170,26 +97,22 @@ export class LinkedList {
         }
 
         messageController.message("查找节点", MessageType.INFO);
-        let p: ListNode | null = null, q = this.head;
+        let p: CircularLinkedListNode = this.head, q = this.head.next;
         while (idx-- > 0) {
-            p = q;
+            p = q!;
             q = q!.next;
         }
         await stepController.wait();
 
         messageController.message("创建新节点", MessageType.INFO);
-        let newNode = LinkedList._create_node(val);
+        let newNode = create(CircularLinkedListNode, val, null);
         await stepController.wait();
 
         messageController.message("链接节点", MessageType.INFO);
-        LinkedList._set_next(newNode, q);
+        newNode._set_next(q);
         await stepController.wait();
 
-        if (p != null) {
-            LinkedList._set_next(p, newNode);
-        } else {
-            this.head = newNode;
-        }
+        p._set_next(newNode);
         
         ++this.sz;
 
@@ -207,22 +130,18 @@ export class LinkedList {
         }
 
         messageController.message("查找节点", MessageType.INFO);
-        let p: ListNode | null = null, q: ListNode = this.head!;
+        let p = this.head;
         while (idx-- > 0) {
-            p = q;
-            q = q.next!;
+            p = p.next!;
         }
         await stepController.wait();
 
         messageController.message("删除节点", MessageType.INFO);
-        if (p != null) {
-            LinkedList._set_next(p, q.next);
-        } else {
-            this.head = q.next;
-        }
+        let q = p.next!;
+        p._set_next(q.next);
         await stepController.wait();
-        
-        LinkedList._delete_node(q);
+
+        q._delete();
         --this.sz;
 
         messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);
