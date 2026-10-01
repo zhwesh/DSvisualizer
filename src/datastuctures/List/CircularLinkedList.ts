@@ -74,12 +74,13 @@ export class CircularLinkedList {
     /**
      * 清空链表
      * 
-     * 动画效果：以head指向自己，其余节点消失
+     * 动画效果：让链表的head节点指向自己，其余节点消失
      * 
-     * @param head 链表头节点
+     * @param circularLinkedList 要清空的链表 
      */
-    public static _clear(head: CircularLinkedListNode) {
-        head.next = head;
+    public static _clear(circularLinkedList: CircularLinkedList) {
+        circularLinkedList.head.next = circularLinkedList.head;
+        circularLinkedList.sz = 0;
     }
 
     /************************************************** */
@@ -101,8 +102,7 @@ export class CircularLinkedList {
         }
 
         messageController.message("清除所有元素", MessageType.INFO);
-        CircularLinkedList._clear(this.head);
-        this.sz = 0;
+        CircularLinkedList._clear(this);
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }

@@ -73,11 +73,14 @@ export class LinkedList {
     /**
      * 清空链表
      * 
-     * 动画效果：以head为头节点的链表消失
+     * 动画效果：链表linkedList消失
      * 
-     * @param head 链表头节点
+     * @param linkedList 要清空的链表
      */
-    public static _clear(head: ListNode | null): void { }
+    public static _clear(linkedList: LinkedList): void {
+        linkedList.head = null;
+        linkedList.sz = 0;
+    }
 
     /************************************************** */
 
@@ -97,9 +100,7 @@ export class LinkedList {
         }
 
         messageController.message("清除所有元素", MessageType.INFO);
-        LinkedList._clear(this.head);
-        this.head = null;
-        this.sz = 0;
+        LinkedList._clear(this);
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }

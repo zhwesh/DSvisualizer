@@ -89,11 +89,14 @@ export class DoubleLinkedList {
     /**
      * 清空链表
      * 
-     * 动画效果：以head指向自己，其余节点消失
+     * 动画效果：链表清空
      * 
-     * @param head 链表头节点
+     * @param doubleLinkedList 要清空的链表
      */
-    public static _clear(head: DoubleLinkedListNode) { }
+    public static _clear(doubleLinkedList: DoubleLinkedList) {
+        doubleLinkedList.head = null;
+        doubleLinkedList.sz = 0;
+    }
 
     /************************************************** */
 
@@ -113,9 +116,7 @@ export class DoubleLinkedList {
         }
 
         messageController.message("清除所有元素", MessageType.INFO);
-        DoubleLinkedList._clear(this.head);
-        this.head = null;
-        this.sz = 0;
+        DoubleLinkedList._clear(this);
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }

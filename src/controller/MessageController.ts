@@ -2,7 +2,7 @@
  * 操作成功消息
  */
 export const SuccessMessage = {
-    GET_SUCCESS: "找到数据",
+    GET_SUCCESS: "查找完成",
     SET_SUCCESS: "修改完成",
     INSERT_SUCCESS: "插入完成",
     DELETE_SUCCESS: "删除完成",
