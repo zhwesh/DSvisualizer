@@ -1,6 +1,6 @@
 import { MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
-import { LinkedDequeNode } from "../../node/LinkedNode/impl/LinkedDequeNode";
+import { DoublyLinkedListNode } from "../../node/LinkedNode/impl/DoublyLinkedNode";
 import { create } from "../../node/factory"
 
 let messageController = MessageController.getMessageController();
@@ -10,13 +10,23 @@ let stepController = StepController.getStepController();
  * 双端队列（双向循环链表实现）
  */
 export class LinkedDeque {
-    private head: LinkedDequeNode;
+    /**
+     * 设置哨兵节点
+     * @param header 要设置的哨兵节点
+     */
+    public _set_header(header: DoublyLinkedListNode): void {
+        this.header = header;
+    }
+
+    /************************************************** */
+
+    private header!: DoublyLinkedListNode;
     private sz: number;
 
     constructor() {
-        this.head = create(LinkedDequeNode, null, null, null);
-        this.head._set_next(this.head);
-        this.head._set_last(this.head);
+        this._set_header(create(DoublyLinkedListNode, null, null, null));
+        this.header._set_next(this.header);
+        this.header._set_last(this.header);
         this.sz = 0;
     }
 
@@ -40,8 +50,9 @@ export class LinkedDeque {
             return null;
         }
 
+        await stepController.wait();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
-        return this.head.next!.val!;
+        return this.header.next!.val!;
     }
 
     /**
@@ -54,8 +65,9 @@ export class LinkedDeque {
             return null;
         }
 
+        await stepController.wait();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
-        return this.head.last!.val!;
+        return this.header.last!.val!;
     }
 
     /**
@@ -64,18 +76,18 @@ export class LinkedDeque {
      */
     public async addFirst(val: number): Promise<void> {
         messageController.message("创建节点", MessageType.INFO);
-        let node = create(LinkedDequeNode, val, null, null);
-        await stepController.wait();
+        let node = create(DoublyLinkedListNode, val, null, null);
 
+        await stepController.wait();
         messageController.message("链接节点", MessageType.INFO);
-        node._set_next(this.head.next);
-        node._set_last(this.head);
-        await stepController.wait();
+        node._set_next(this.header.next);
+        node._set_last(this.header);
 
-        this.head.next!._set_last(node);
-        this.head._set_next(node);
         await stepController.wait();
+        this.header.next!._set_last(node);
+        this.header._set_next(node);
 
+        await stepController.wait();
         ++this.sz;
 
         messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
@@ -87,18 +99,18 @@ export class LinkedDeque {
      */
     public async addLast(val: number): Promise<void> {
         messageController.message("创建节点", MessageType.INFO);
-        let node = create(LinkedDequeNode, val, null, null);
-        await stepController.wait();
+        let node = create(DoublyLinkedListNode, val, null, null);
 
+        await stepController.wait();
         messageController.message("链接节点", MessageType.INFO);
-        node._set_next(this.head);
-        node._set_last(this.head.last);
-        await stepController.wait();
+        node._set_next(this.header);
+        node._set_last(this.header.last);
 
-        this.head.last!._set_next(node);
-        this.head._set_last(node);
         await stepController.wait();
-
+        this.header.last!._set_next(node);
+        this.header._set_last(node);
+        
+        await stepController.wait();
         ++this.sz;
 
         messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
@@ -113,15 +125,16 @@ export class LinkedDeque {
             return;
         }
 
+        await stepController.wait();
         messageController.message("删除节点", MessageType.INFO);
-        const node = this.head.next!;
-        this.head.next!.next!._set_last(this.head);
-        this.head._set_next(this.head.next!.next);
-        await stepController.wait();
+        const node = this.header.next!;
+        this.header.next!.next!._set_last(this.header);
+        this.header._set_next(this.header.next!.next);
 
+        await stepController.wait();
         node._delete();
-        await stepController.wait();
 
+        await stepController.wait();
         --this.sz;
 
         messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);
@@ -136,13 +149,15 @@ export class LinkedDeque {
             return;
         }
 
-        messageController.message("删除节点", MessageType.INFO);
-        const node = this.head.last!;
-        this.head.last!.last!._set_next(this.head);
-        this.head._set_last(this.head.last!.last);
         await stepController.wait();
-        
+        messageController.message("删除节点", MessageType.INFO);
+        const node = this.header.last!;
+        this.header.last!.last!._set_next(this.header);
+        this.header._set_last(this.header.last!.last);
+
+        await stepController.wait();
         node._delete();
+        
         await stepController.wait();
         --this.sz;
 
@@ -151,8 +166,8 @@ export class LinkedDeque {
 
     // 清除所有元素
     public clear() {
-        this.head._set_next(this.head);
-        this.head._set_last(this.head);
+        this.header._set_next(this.header);
+        this.header._set_last(this.header);
         this.sz = 0;
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);

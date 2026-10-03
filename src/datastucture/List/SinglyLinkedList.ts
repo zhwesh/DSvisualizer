@@ -10,11 +10,21 @@ let stepController = StepController.getStepController();
  * 线性表（单链表实现）
  */
 export class LinkedList {
-    private head: SinglyLinkedNode | null;
+    /**
+     * 设置头节点
+     * @param head 要设置的头节点
+     */
+    public _set_head(head: SinglyLinkedNode | null) {
+        this.head = head;
+    }
+
+    /************************************************** */
+    
+    private head!: SinglyLinkedNode | null;
     private sz: number;
 
     constructor() {
-        this.head = null;
+        this._set_head(null);
         this.sz = 0;
     }
 
@@ -26,7 +36,7 @@ export class LinkedList {
         }
 
         messageController.message("清除所有元素", MessageType.INFO);
-        this.head = null;
+        this._set_head(null);
         this.sz = 0;
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
@@ -66,6 +76,7 @@ export class LinkedList {
             return null;
         }
 
+        await stepController.wait();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return node.val;
     }
@@ -81,6 +92,7 @@ export class LinkedList {
             return;
         }
 
+        await stepController.wait();
         node._set_value(val);
         messageController.message(SuccessMessage.SET_SUCCESS, MessageType.SUCCESS);
     }
@@ -96,28 +108,28 @@ export class LinkedList {
             return;
         }
 
+        await stepController.wait();
         messageController.message("查找节点", MessageType.INFO);
         let p: SinglyLinkedNode | null = null, q = this.head;
         while (idx-- > 0) {
             p = q;
             q = q!.next;
         }
-        await stepController.wait();
 
+        await stepController.wait();
         messageController.message("创建新节点", MessageType.INFO);
-        let newNode = create(SinglyLinkedNode, val, null);
-        await stepController.wait();
+        let node = create(SinglyLinkedNode, val, null);
 
+        await stepController.wait();
         messageController.message("链接节点", MessageType.INFO);
-        newNode._set_next(q);
-        await stepController.wait();
+        node._set_next(q);
 
+        await stepController.wait();
         if (p != null) {
-            p._set_next(newNode);
+            p._set_next(node);
         } else {
-            this.head = newNode;
+            this._set_head(node);
         }
-        
         ++this.sz;
 
         messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
@@ -133,22 +145,23 @@ export class LinkedList {
             return;
         }
 
+        await stepController.wait();
         messageController.message("查找节点", MessageType.INFO);
         let p: SinglyLinkedNode | null = null, q: SinglyLinkedNode = this.head!;
         while (idx-- > 0) {
             p = q;
             q = q.next!;
         }
-        await stepController.wait();
 
+        await stepController.wait();
         messageController.message("删除节点", MessageType.INFO);
         if (p != null) {
             p._set_next(q.next);
         } else {
-            this.head = q.next;
+            this._set_head(q.next);
         }
+
         await stepController.wait();
-        
         q._delete();
         --this.sz;
 

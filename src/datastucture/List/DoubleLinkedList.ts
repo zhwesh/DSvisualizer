@@ -10,11 +10,21 @@ let stepController = StepController.getStepController();
  * 线性表（双向链表实现）
  */
 export class DoubleLinkedList {
-    private head: DoublyLinkedListNode | null;
+    /**
+     * 设置头节点
+     * @param head 要设置的头节点
+     */
+    public _set_head(head: DoublyLinkedListNode | null) {
+        this.head = head;
+    }
+
+    /************************************************** */
+
+    private head!: DoublyLinkedListNode | null;
     private sz: number;
 
     constructor() {
-        this.head = null;
+        this._set_head(null);
         this.sz = 0;
     }
 
@@ -26,7 +36,7 @@ export class DoubleLinkedList {
         }
 
         messageController.message("清除所有元素", MessageType.INFO);
-        this.head = null;
+        this._set_head(null);
         this.sz = 0;
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
@@ -65,6 +75,8 @@ export class DoubleLinkedList {
         if (node === null) {
             return null;
         }
+        
+        await stepController.wait();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return node.val;
     }
@@ -80,6 +92,7 @@ export class DoubleLinkedList {
             return;
         }
 
+        await stepController.wait();
         node._set_value(val);
         messageController.message(SuccessMessage.SET_SUCCESS, MessageType.SUCCESS);
     }
@@ -91,6 +104,7 @@ export class DoubleLinkedList {
             return;
         }
 
+        await stepController.wait();
         messageController.message("查找节点", MessageType.INFO);
         let last: DoublyLinkedListNode | null = null,
             next = this.head;
@@ -98,30 +112,29 @@ export class DoubleLinkedList {
             last = next;
             next = next!.next;
         }
+
         await stepController.wait();
-        
         messageController.message("创建新节点", MessageType.INFO);
         let node = create(DoublyLinkedListNode, val, null, null);
-        await stepController.wait();
 
+        await stepController.wait();
         messageController.message("链接节点", MessageType.INFO);
         node._set_next(next);
-        await stepController.wait();
 
+        await stepController.wait();
         node._set_last(last);
-        await stepController.wait();
 
+        await stepController.wait();
         if (last != null) {
             last._set_next(node);
         } else {
-            this.head = node;
+            this._set_head(node);
         }
+
         await stepController.wait();
-        
         if (next != null) {
             next._set_last(node);
         }
-        
         ++this.sz;
 
         messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
@@ -137,23 +150,24 @@ export class DoubleLinkedList {
             return;
         }
 
+        await stepController.wait();
         messageController.message("查找节点", MessageType.INFO);
         let p = this.getNode(idx)!;
-        await stepController.wait();
 
+        await stepController.wait();
         messageController.message("删除节点", MessageType.INFO);
         if (p.last != null) {
             p.last._set_next(p.next);
         } else {
-            this.head = p.next;
+            this._set_head(p.next);
         }
-        await stepController.wait();
 
+        await stepController.wait();
         if (p.next != null) {
             p.next._set_last(p.last);
         }
+
         await stepController.wait();
-        
         p._delete();
         --this.sz;
 

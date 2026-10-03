@@ -12,13 +12,16 @@ let stepController = StepController.getStepController();
 export class ArrayList {
 
     // 内部数组节点
-    public arr: ArrayListNode;
+    private arr: ArrayListNode;
+    // 已经使用的大小
+    private sz: number;
 
     constructor() {
         this.arr = create(
             ArrayListNode,
             new Array(0)
         );
+        this.sz = 0;
     }
 
     /**
@@ -26,18 +29,17 @@ export class ArrayList {
      */
     private async expand(): Promise<void> {
         messageController.message("创建双倍大小的临时数组", MessageType.INFO);
-        const len = this.arr.data.length;
-        const tmp: ArrayListNode = create(
+        const len = this.size();
+        const tmp = create(
             ArrayListNode,
             new Array(len === 0 ? 1 : (len << 1)).fill(null)
         );
         await stepController.wait();
 
         messageController.message("拷贝原数组数据", MessageType.INFO);
-        for (let i = 0; i < this.arr.sz; ++i) {
+        for (let i = 0; i < len; ++i) {
             tmp._swap_value(i, this.arr, i);
         }
-        tmp.sz = this.arr.sz;
         await stepController.wait();
 
         messageController.message("使用临时数组作为新数组", MessageType.INFO);
@@ -49,7 +51,7 @@ export class ArrayList {
      * 清除所有元素
      */
     public clear(): void {
-        if (this.arr.sz === 0) {
+        if (this.sz === 0) {
             messageController.message("数组已经为空", MessageType.WARNING);
             return;
         }
@@ -65,7 +67,7 @@ export class ArrayList {
      * @returns 是否为空
      */
     public isEmpty(): boolean {
-        return this.arr.sz === 0;
+        return this.sz === 0;
     }
 
     /**
@@ -73,7 +75,7 @@ export class ArrayList {
      * @returns 元素个数
      */
     public size(): number {
-        return this.arr.sz;
+        return this.sz;
     }
 
     /**
@@ -82,10 +84,12 @@ export class ArrayList {
      * @returns 索引为idx的元素
      */
     public async get(idx: number): Promise<number | null> {
-        if (idx < 0 || idx >= this.arr.sz) {
+        if (idx < 0 || idx >= this.sz) {
             messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
             return null;
         }
+
+        await stepController.wait();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return this.arr.data[idx] as number;
     }
@@ -96,11 +100,12 @@ export class ArrayList {
      * @param val 新值
      */
     public async set(idx: number, val: number): Promise<void> {
-        if (idx < 0 || idx >= this.arr.sz) {
+        if (idx < 0 || idx >= this.sz) {
             messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
             return;
         }
 
+        await stepController.wait();
         messageController.message("修改数据", MessageType.INFO);
         this.arr._set_value(idx, val);
 
@@ -113,23 +118,24 @@ export class ArrayList {
      * @param val 待插入的值
      */
     public async insert(idx: number, val: number): Promise<void> {
-        if (idx < 0 || idx > this.arr.sz) {
+        if (idx < 0 || idx > this.sz) {
             messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
             return;
         }
-        if (this.arr.sz === this.arr.data.length) {
-            messageController.message("扩容", MessageType.INFO);
+        if (this.sz === this.arr.data.length) {
+            await stepController.wait();
+            messageController.message("数组容量已满，扩容", MessageType.INFO);
             await this.expand();
         }
-        await stepController.wait();
 
+        await stepController.wait();
         messageController.message("将元素向后移动", MessageType.INFO);
-        for (let i = this.arr.sz; i > idx; --i) {
+        for (let i = this.sz; i > idx; --i) {
             this.arr._swap_value(i, this.arr, i - 1);
         }
-        ++this.arr.sz;
-        await stepController.wait();
+        ++this.sz;
 
+        await stepController.wait();
         messageController.message("插入数据", MessageType.INFO);
         this.arr._set_value(idx, val);
 
@@ -141,20 +147,21 @@ export class ArrayList {
      * @param idx 索引
      */
     public async delete(idx: number): Promise<void> {
-        if (idx < 0 || idx >= this.arr.sz) {
+        if (idx < 0 || idx >= this.sz) {
             messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
             return;
         }
 
+        await stepController.wait();
         messageController.message("将元素向前移动", MessageType.INFO);
-        --this.arr.sz;
-        for (let i = idx; i < this.arr.sz; ++i) {
+        --this.sz;
+        for (let i = idx; i < this.sz; ++i) {
             this.arr._swap_value(i, this.arr, i + 1);
         }
-        await stepController.wait();
 
+        await stepController.wait();
         messageController.message("删除多余元素", MessageType.INFO);
-        this.arr._set_value(this.arr.sz, null);
+        this.arr._set_value(this.sz, null);
 
         messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);
     }

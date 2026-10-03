@@ -19,7 +19,7 @@ export class DoublyLinkedListNode extends LinkedNode<DoublyLinkedListNode> {
 
     last: DoublyLinkedListNode | null;
 
-    constructor(val: number,
+    constructor(val: number | null,
         next: DoublyLinkedListNode | null,
         last: DoublyLinkedListNode | null) {
         super(val, next);

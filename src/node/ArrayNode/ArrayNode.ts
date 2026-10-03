@@ -7,8 +7,6 @@ import { DataNode } from "../DataNode";
 export class ArrayNode extends DataNode {
     // 底层数组
     public data: (number | null)[];
-    // 已经使用的数组大小
-    public sz: number;
 
     /**
      * 创建ArrayNode对象
@@ -20,7 +18,6 @@ export class ArrayNode extends DataNode {
     constructor(data: (number | null)[]) {
         super();
         this.data = data;
-        this.sz = 0;
     }
 
     /**
@@ -58,7 +55,6 @@ export class ArrayNode extends DataNode {
      */
     public _delete(): void {
         this.data = Array(0);
-        this.sz = 0;
     }
 
     /**
@@ -72,9 +68,5 @@ export class ArrayNode extends DataNode {
         const data: (number | null)[] = this.data;
         this.data = other.data;
         other.data = data;
-
-        const sz: number = this.sz;
-        this.sz = other.sz;
-        other.sz = sz;
     }
 };
