@@ -1,4 +1,4 @@
-import { ErrorMessage, MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
+import { MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
 import { SinglyLinkedNode } from "../../node/LinkedNode/impl/SinglyLinkedNode";
 import { create } from "../../node/factory";
@@ -16,6 +16,14 @@ export class CircularLinkedList {
      */
     public _set_header(header: SinglyLinkedNode): void {
         this.header = header;
+    }
+
+    /**
+     * 动画效果：清空链表
+     */
+    public _clear(): void {
+        this.header._set_next(this.header);
+        this.sz = 0;
     }
 
     /************************************************** */
@@ -36,9 +44,7 @@ export class CircularLinkedList {
             return;
         }
 
-        messageController.message("清除所有元素", MessageType.INFO);
-        this.header.next = this.header;
-        this.sz = 0;
+        this._clear();
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }
@@ -56,7 +62,7 @@ export class CircularLinkedList {
     // 获取索引为idx的节点
     private getNode(idx: number): SinglyLinkedNode | null {
         if (idx < 0 || idx >= this.sz) {
-            messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
+            messageController.message("索引越界", MessageType.ERROR);
             return null;
         }
         let tmp = this.header.next!;
@@ -105,7 +111,7 @@ export class CircularLinkedList {
      */
     public async insert(idx: number, val: number): Promise<void> {
         if (idx < 0 || idx > this.sz) {
-            messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
+            messageController.message("索引越界", MessageType.ERROR);
             return;
         }
 
@@ -138,7 +144,7 @@ export class CircularLinkedList {
      */
     public async delete(idx: number): Promise<void> {
         if (idx < 0 || idx >= this.sz) {
-            messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
+            messageController.message("元素不存在", MessageType.ERROR);
             return;
         }
 

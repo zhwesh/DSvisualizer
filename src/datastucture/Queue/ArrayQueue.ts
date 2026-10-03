@@ -10,6 +10,23 @@ let stepController = StepController.getStepController();
  * 普通队列（数组实现）
  */
 export class ArrayQueue {
+    /**
+     * 动画效果：清空队列，并设置首尾指针
+     */
+    public async _clear(): Promise<void> {
+        messageController.message("清除所有元素", MessageType.INFO);
+        for (let i = 0; i < this.arr.data.length; i++) {
+            this.arr._set_value(i, null);
+        }
+
+        await stepController.wait();
+        messageController.message("设置首尾指针", MessageType.INFO);
+        this.arr._set_head(0);
+        this.arr._set_tail(0);
+    }
+
+    /************************************************** */
+    
     private arr: ArrayQueueNode;
 
     constructor() {
@@ -29,14 +46,14 @@ export class ArrayQueue {
             ArrayQueueNode,
             new Array(len === 0 ? 1 : (len << 1)).fill(null)
         );
-        await stepController.wait();
 
+        await stepController.wait();
         messageController.message("拷贝原数组数据", MessageType.INFO);
         for (let i = 0; i < len; ++i) {
             tmp._swap_value(i, this.arr, this.arr.head! + i);
         }
-        await stepController.wait();
 
+        await stepController.wait();
         messageController.message("使用临时数组作为新数组", MessageType.INFO);
         this.arr._swap_array(tmp);
         this.arr._set_head(0);
@@ -109,15 +126,8 @@ export class ArrayQueue {
             return;
         }
 
-        await stepController.wait();
-        messageController.message("清除所有元素", MessageType.INFO);
-        for (let i = 0; i < this.arr.data.length; i++) {
-            this.arr._set_value(i, null);
-        }
+        await this._clear();
 
-        await stepController.wait();
-        messageController.message("设置首尾指针", MessageType.INFO);
-        this.arr._set_head(0);
-        this.arr._set_tail(0);
+        messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }
 }

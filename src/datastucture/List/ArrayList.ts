@@ -1,4 +1,4 @@
-import { ErrorMessage, MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
+import { MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
 import { ArrayListNode } from "../../node/ArrayNode/impl/ArrayListNode";
 import { create } from "../../node/factory"
@@ -10,6 +10,15 @@ let stepController = StepController.getStepController();
  * 线性表（数组实现）
  */
 export class ArrayList {
+    /**
+     * 动画效果：清空数组
+     */
+    public _clear(): void {
+        this.arr._delete();
+        this.sz = 0;
+    }
+
+    /************************************************** */
 
     // 内部数组节点
     private arr: ArrayListNode;
@@ -56,8 +65,7 @@ export class ArrayList {
             return;
         }
 
-        messageController.message("清除所有元素", MessageType.INFO);
-        this.arr._delete();
+        this._clear();
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }
@@ -85,7 +93,7 @@ export class ArrayList {
      */
     public async get(idx: number): Promise<number | null> {
         if (idx < 0 || idx >= this.sz) {
-            messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
+            messageController.message("索引越界", MessageType.ERROR);
             return null;
         }
 
@@ -101,7 +109,7 @@ export class ArrayList {
      */
     public async set(idx: number, val: number): Promise<void> {
         if (idx < 0 || idx >= this.sz) {
-            messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
+            messageController.message("索引越界", MessageType.ERROR);
             return;
         }
 
@@ -119,7 +127,7 @@ export class ArrayList {
      */
     public async insert(idx: number, val: number): Promise<void> {
         if (idx < 0 || idx > this.sz) {
-            messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
+            messageController.message("索引越界", MessageType.ERROR);
             return;
         }
         if (this.sz === this.arr.data.length) {
@@ -148,7 +156,7 @@ export class ArrayList {
      */
     public async delete(idx: number): Promise<void> {
         if (idx < 0 || idx >= this.sz) {
-            messageController.message(ErrorMessage.INDEX_OUT_OF_RANGE, MessageType.ERROR);
+            messageController.message("元素不存在", MessageType.ERROR);
             return;
         }
 

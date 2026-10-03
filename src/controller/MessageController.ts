@@ -10,13 +10,6 @@ export const SuccessMessage = {
 } as const;
 
 /**
- * 异常消息
- */
-export const ErrorMessage = {
-    INDEX_OUT_OF_RANGE: "索引越界",
-} as const;
-
-/**
  * 消息种类
  */
 export const MessageType = {

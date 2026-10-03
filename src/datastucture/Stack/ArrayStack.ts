@@ -1,4 +1,4 @@
-import { ErrorMessage, MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
+import { MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
 import { ArrayStackNode } from "../../node/ArrayNode/impl/ArrayStackNode"
 import { create } from "../../node/factory"
@@ -10,17 +10,24 @@ let stepController = StepController.getStepController();
  * 栈（数组实现）
  */
 export class ArrayStack {
+    /**
+     * 动画效果：清空栈并让栈顶指针消失
+     */
+    public _clear(): void {
+        this.arr._delete();
+        this.arr._set_top(null);
+    }
+
+    /************************************************** */
+
     // 内部数组节点
     private arr: ArrayStackNode;
-    // 已经使用的大小
-    private sz: number;
 
     constructor() {
         this.arr = create(
             ArrayStackNode,
             new Array(0)
         );
-        this.sz = 0;
     }
 
     /**
@@ -48,23 +55,22 @@ export class ArrayStack {
 
     // 是否为空
     public isEmpty(): boolean {
-        return this.sz === 0;
+        return this.arr.top === null;
     }
 
     // 元素个数
     public size(): number {
-        return this.sz;
+        return this.arr.top === null ? 0 : this.arr.top + 1;
     }
 
     // 清除所有元素
     public clear(): void {
-        if (this.sz === 0) {
+        if (this.size() === 0) {
             messageController.message("栈已经为空", MessageType.WARNING);
             return;
         }
 
-        messageController.message("清除所有元素", MessageType.INFO);
-        this.arr._delete();
+        this._clear();
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }
@@ -80,7 +86,8 @@ export class ArrayStack {
         }
 
         await stepController.wait();
-        return this.arr.data[this.sz - 1];
+        messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
+        return this.arr.data[this.arr.top!];
     }
 
     /**
@@ -93,7 +100,13 @@ export class ArrayStack {
         }
 
         await stepController.wait();
-        this.arr._set_value(--this.sz, null);
+        this.arr._set_value(this.arr.top!, null);
+        if (this.arr.top === 0) {
+            this.arr._set_top(null);
+        } else {
+            this.arr._set_top(this.arr.top! - 1);
+        }
+        messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);
     }
 
     /**
@@ -101,7 +114,7 @@ export class ArrayStack {
      * @param val 新值
      */
     public async push(val: number): Promise<void> {
-        if (this.sz === this.arr.data.length) {
+        if (this.size() === this.arr.data.length) {
             await stepController.wait();
             messageController.message("栈容量已满，扩容", MessageType.INFO);
             await this.expand();
@@ -109,8 +122,8 @@ export class ArrayStack {
 
         await stepController.wait();
         messageController.message("插入数据", MessageType.INFO);
-        this.arr._set_value(this.sz, val);
-        ++this.sz;
+        this.arr._set_top(this.arr.top === null ? 0 : this.arr.top + 1);
+        this.arr._set_value(this.arr.top!, val);
 
         messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
     }

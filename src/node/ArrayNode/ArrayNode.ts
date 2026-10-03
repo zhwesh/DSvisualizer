@@ -8,13 +8,6 @@ export class ArrayNode extends DataNode {
     // 底层数组
     public data: (number | null)[];
 
-    /**
-     * 创建ArrayNode对象
-     * 
-     * 动画效果：当前对象浮现于画布上
-     * 
-     * @param data 初始数组
-     */
     constructor(data: (number | null)[]) {
         super();
         this.data = data;

@@ -26,6 +26,15 @@ export class LinkedQueue {
         this.tail = tail;
     }
 
+    /**
+     * 动画效果：清空队列，哨兵节点后继指针指向null
+     */
+    public async _clear(): Promise<void> {
+        this.header._set_next(null);
+        this._set_tail(this.header);
+        this.sz = 0;
+    }
+
     /************************************************** */
 
     private header!: SinglyLinkedNode;
@@ -59,6 +68,7 @@ export class LinkedQueue {
             return null;
         }
 
+        await stepController.wait();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return this.header.next!.val!;
     }
@@ -68,14 +78,14 @@ export class LinkedQueue {
      * @param val 新值
      */
     public async add(val: number): Promise<void> {
+        await stepController.wait();
         messageController.message("创建节点", MessageType.INFO);
         let node = create(SinglyLinkedNode, val, null);
-        await stepController.wait();
 
+        await stepController.wait();
         messageController.message("链接节点", MessageType.INFO);
         this.tail._set_next(node);
         this._set_tail(node);
-        await stepController.wait();
 
         ++this.sz;
 
@@ -91,24 +101,31 @@ export class LinkedQueue {
             return;
         }
 
-        messageController.message("删除节点", MessageType.INFO);
         const node = this.header.next!;
+
+        await stepController.wait();
+        messageController.message("删除队首节点，链接其后继节点", MessageType.INFO);
         this.header._set_next(node.next);
-        await stepController.wait();
 
+        await stepController.wait();
+        messageController.message("删除节点", MessageType.INFO);
         node._delete();
-        await stepController.wait();
-
         --this.sz;
+        if (this.isEmpty()) {
+            this._set_tail(this.header);
+        }
 
         messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);
     }
 
     // 清除所有元素
-    public clear() {
-        this.header._set_next(this.header);
-        this._set_tail(this.header);
-        this.sz = 0;
+    public async clear(): Promise<void> {
+        if (this.isEmpty()) {
+            messageController.message("队列已经为空", MessageType.WARNING);
+            return;
+        }
+
+        await this._clear();
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }

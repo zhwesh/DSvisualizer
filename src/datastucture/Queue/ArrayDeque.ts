@@ -10,6 +10,23 @@ let stepController = StepController.getStepController();
  * 双端队列（数组实现）
  */
 export class ArrayDeque {
+    /**
+     * 动画效果：清空队列，并设置首尾指针
+     */
+    public async _clear(): Promise<void> {
+        messageController.message("清除所有元素", MessageType.INFO);
+        for (let i = 0; i < this.arr.data.length; i++) {
+            this.arr._set_value(i, null);
+        }
+
+        await stepController.wait();
+        messageController.message("设置首尾指针", MessageType.INFO);
+        this.arr._set_head(this.arr.data.length >> 1);
+        this.arr._set_tail(this.arr.data.length >> 1);
+    }
+
+    /************************************************** */
+
     private arr: ArrayQueueNode;
 
     constructor() {
@@ -24,11 +41,10 @@ export class ArrayDeque {
     // 三倍扩容
     private async expand(): Promise<void> {
         messageController.message("创建三倍大小的临时数组", MessageType.INFO);
-        const len = this.size();
         const sz = this.size();
         let tmp = create(
             ArrayQueueNode,
-            new Array(len * 3).fill(null)
+            new Array(sz === 0 ? 9 : sz * 3).fill(null)
         );
 
         await stepController.wait();
@@ -159,15 +175,8 @@ export class ArrayDeque {
             return;
         }
 
-        await stepController.wait();
-        messageController.message("清除所有元素", MessageType.INFO);
-        for (let i = 0; i < this.arr.data.length; i++) {
-            this.arr._set_value(i, null);
-        }
+        await this._clear();
 
-        await stepController.wait();
-        messageController.message("设置首尾指针", MessageType.INFO);
-        this.arr._set_head(this.arr.data.length >> 1);
-        this.arr._set_tail(this.arr.data.length >> 1);
+        messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }
 }

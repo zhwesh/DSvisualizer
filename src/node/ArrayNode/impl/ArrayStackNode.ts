@@ -1,11 +1,11 @@
 import { ArrayNode } from "../ArrayNode";
 
 /**
- * 队列数组节点
+ * 栈数组节点
  */
 export class ArrayStackNode extends ArrayNode {
     // 栈顶指针（当值为null时不显示）
-    private top: number | null;
+    public top: number | null;
 
     constructor(data: (number | null)[]) {
         super(data);
@@ -13,8 +13,8 @@ export class ArrayStackNode extends ArrayNode {
     }
 
     /**
-     * 设置队首指针
-     * @param top 队首指针索引
+     * 设置栈顶指针
+     * @param top 栈顶指针索引
      */
     public _set_top(top: number | null): void {
         this.top = top;
