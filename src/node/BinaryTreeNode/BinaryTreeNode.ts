@@ -4,30 +4,16 @@ import { DataNode } from "../DataNode";
  * 二叉树节点
  */
 export class BinaryTreeNode<T extends BinaryTreeNode<T>> extends DataNode {
-    public val: number | null;      // 节点的值
     public left: T | null;          // 左孩子
     public right: T | null;         // 右孩子
 
     constructor(
-        val: number | null,
         left: T | null,
         right: T | null
     ) {
         super();
-        this.val = val;
         this.left = left;
         this.right = right;
-    }
-
-    /**
-     * 设置当前节点的值
-     * 
-     * 动画效果：改变当前节点的值
-     * 
-     * @param val 新值
-     */
-    public _set_value(val: number | null): void {
-        this.val = val;
     }
 
     /**
@@ -58,7 +44,6 @@ export class BinaryTreeNode<T extends BinaryTreeNode<T>> extends DataNode {
      * 动画效果：当前节点消失
      */
     public _delete(): void {
-        this.val = null;
         this.left = null;
         this.right = null;
     }

@@ -1,4 +1,4 @@
-import { BinarySearchTreeNode } from "../../../node/BinaryTreeNode/BinarySearchTreeNode/BinarySearchTreeNode"
+import { BinarySearchTreeNode } from "../../../node/BinaryTreeNode/impl/BinarySearchTreeNode/BinarySearchTreeNode"
 import { create } from "../../../node/factory";
 import { MessageController, MessageType, SuccessMessage } from "../../../controller/MessageController";
 import { StepController } from "../../../controller/StepController";

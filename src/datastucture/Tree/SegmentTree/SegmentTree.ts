@@ -44,17 +44,17 @@ export class SegmentTree {
      */
     private build(nums: number[], L: number, R: number): SegmentTreeNode {
         if (L === R) {
-            return create(SegmentTreeNode, nums[L], null, null, 0);
+            return create(SegmentTreeNode, null, null, nums[L], 0);
         }
 
         const mid = L + ((R - L) >> 1);
         const left = this.build(nums, L, mid);
         const right = this.build(nums, mid + 1, R);
 
-        const node = create(SegmentTreeNode, 0, null, null, 0);
+        const node = create(SegmentTreeNode, null, null, 0, 0);
         node._set_left(left);
         node._set_right(right);
-        node._set_value(left.val! + right.val!);
+        node._set_sum(left.sum! + right.sum!);
         return node;
     }
 
@@ -79,9 +79,9 @@ export class SegmentTree {
             "将懒标记'" + lazy + "'下传给左右孩子",
             MessageType.INFO
         );
-        left._set_value(left.val! + (mid - L + 1) * lazy);
+        left._set_sum(left.sum! + (mid - L + 1) * lazy);
         left._set_lazy(left.lazy! + lazy);
-        right._set_value(right.val! + (R - mid) * lazy);
+        right._set_sum(right.sum! + (R - mid) * lazy);
         right._set_lazy(right.lazy! + lazy);
         node._set_lazy(0);
     }
@@ -107,7 +107,7 @@ export class SegmentTree {
                     (R - L + 1) * val + "，懒标记增加" + val,
                 MessageType.INFO
             );
-            node._set_value(node.val! + (R - L + 1) * val);
+            node._set_sum(node.sum! + (R - L + 1) * val);
             node._set_lazy(node.lazy! + val);
             return;
         }
@@ -126,7 +126,7 @@ export class SegmentTree {
             "用左右孩子的值更新节点[" + L + "," + R + "]",
             MessageType.INFO
         );
-        node._set_value(node.left!.val! + node.right!.val!);
+        node._set_sum(node.left!.sum! + node.right!.sum!);
     }
 
     /**
@@ -172,10 +172,10 @@ export class SegmentTree {
             await stepController.wait();
             messageController.message(
                 "区间[" + L + "," + R + "]完全包含于[" + l + "," +
-                    r + "]，返回当前区间和" + node.val,
+                    r + "]，返回当前区间和" + node.sum,
                 MessageType.INFO
             );
-            return node.val!;
+            return node.sum!;
         }
 
         await this.down(L, R, node);
