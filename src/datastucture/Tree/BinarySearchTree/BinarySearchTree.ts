@@ -1,7 +1,7 @@
-import { BinarySearchTreeNode } from "../../node/BinaryTreeNode/impl/BinarySearchTreeNode"
-import { create } from "../../node/factory";
-import { MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
-import { StepController } from "../../controller/StepController";
+import { BinarySearchTreeNode } from "../../../node/BinarySearchTreeNode/BinarySearchTreeNode"
+import { create } from "../../../node/factory";
+import { MessageController, MessageType, SuccessMessage } from "../../../controller/MessageController";
+import { StepController } from "../../../controller/StepController";
 
 let messageController = MessageController.getMessageController();
 let stepController = StepController.getStepController();
@@ -116,9 +116,9 @@ export class BinarySearchTree {
 
             await stepController.wait();
             if (toLeft) {
-                messageController.message("待插入值 " + val + " 小于 " + x.val + "，向左查找", MessageType.INFO);
+                messageController.message(val + " 小于 " + x.val + "，向左查找", MessageType.INFO);
             } else {
-                messageController.message("待插入值 " + val + " 大于 " + x.val + "，向右查找", MessageType.INFO);
+                messageController.message(val + " 大于 " + x.val + "，向右查找", MessageType.INFO);
             }
             const next = toLeft ? x.left : x.right;
 

@@ -1,12 +1,12 @@
 import { DataNode } from "../DataNode";
 
 /**
- * 二叉树节点
+ * 二叉搜索树节点
  */
-export class BinaryTreeNode<T extends BinaryTreeNode<T>> extends DataNode {
-    public val: number | null;              // 节点的值
-    public left: T | null;                  // 左孩子
-    public right: T | null;                 // 右孩子
+export class BinarySearchTreeNode<T extends BinarySearchTreeNode<T> = BinarySearchTreeNode<any>> extends DataNode {
+    public val: number | null;      // 节点的值
+    public left: T | null;          // 左孩子
+    public right: T | null;         // 右孩子
 
     constructor(
         val: number | null,
@@ -62,4 +62,4 @@ export class BinaryTreeNode<T extends BinaryTreeNode<T>> extends DataNode {
         this.left = null;
         this.right = null;
     }
-};
+}
