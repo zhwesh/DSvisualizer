@@ -1,4 +1,4 @@
-import { RedBlackTreeNode, _RB_tree_red, _RB_tree_black } from "../../../node/BinarySearchTreeNode/impl/RedBlackTreeNode"
+import { RedBlackTreeNode, _RB_tree_red, _RB_tree_black } from "../../../node/BinaryTreeNode/BinarySearchTreeNode/impl/RedBlackTreeNode"
 import { create } from "../../../node/factory";
 import { MessageController, MessageType, SuccessMessage } from "../../../controller/MessageController";
 import { StepController } from "../../../controller/StepController";

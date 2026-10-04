@@ -5,7 +5,7 @@ import { DataNode } from "../DataNode";
  * 当data内某位置的数字为null时不显示数字
  */
 export class ArrayNode extends DataNode {
-    // 底层数组
+    // 底层数组（值为null的位置不显示数字）
     public data: (number | null)[];
 
     constructor(data: (number | null)[]) {

@@ -1,4 +1,4 @@
-import { BinarySearchTreeNode } from "../../../node/BinarySearchTreeNode/BinarySearchTreeNode"
+import { BinarySearchTreeNode } from "../../../node/BinaryTreeNode/BinarySearchTreeNode/BinarySearchTreeNode"
 import { create } from "../../../node/factory";
 import { MessageController, MessageType, SuccessMessage } from "../../../controller/MessageController";
 import { StepController } from "../../../controller/StepController";
@@ -14,7 +14,7 @@ export class BinarySearchTree {
      * 设置根节点
      * @param root 要设置的根节点
      */
-    public _set_root(root: BinarySearchTreeNode | null): void {
+    public _set_root(root: BinarySearchTreeNode<any> | null): void {
         this.root = root;
     }
 
@@ -28,7 +28,7 @@ export class BinarySearchTree {
         this.sz = 0;
     }
 
-    private root!: BinarySearchTreeNode | null;         // 根节点
+    private root!: BinarySearchTreeNode<any> | null;    // 根节点
     private sz: number;                                 // 节点数量
 
     constructor() {
@@ -106,7 +106,7 @@ export class BinarySearchTree {
 
         await stepController.wait();
         messageController.message("从根节点开始查找插入位置", MessageType.INFO);
-        let x: BinarySearchTreeNode = this.root;
+        let x: BinarySearchTreeNode<any> = this.root;
         while (true) {
             if (x.val === val) {
                 messageController.message("值'" + val + "'已存在", MessageType.WARNING);
@@ -151,8 +151,8 @@ export class BinarySearchTree {
         await stepController.wait();
         messageController.message("从根节点开始查找待删除节点", MessageType.INFO);
 
-        let x: BinarySearchTreeNode | null = this.root;
-        let f: BinarySearchTreeNode | null = null;
+        let x: BinarySearchTreeNode<any> | null = this.root;
+        let f: BinarySearchTreeNode<any> | null = null;
         while (x !== null && x.val !== val) {
             const toLeft = val < x.val!;
             await stepController.wait();
@@ -172,8 +172,8 @@ export class BinarySearchTree {
         if (x.left !== null && x.right !== null) {
             await stepController.wait();
             messageController.message("待删除节点有两个孩子，查找中序后继节点", MessageType.INFO);
-            let y: BinarySearchTreeNode = x.right;
-            let fy: BinarySearchTreeNode = x;
+            let y: BinarySearchTreeNode<any> = x.right;
+            let fy: BinarySearchTreeNode<any> = x;
             while (y.left !== null) {
                 fy = y;
                 y = y.left;
