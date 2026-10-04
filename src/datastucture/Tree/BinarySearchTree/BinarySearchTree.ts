@@ -77,10 +77,16 @@ export class BinarySearchTree {
             const toLeft = val < x.val!;
             await stepController.wait();
             if (toLeft) {
-                messageController.message(val + " < " + x.val + "，向左查找", MessageType.INFO);
+                messageController.message(
+                    val + " < " + x.val + "，向左查找",
+                    MessageType.INFO
+                );
                 x = x.left;
             } else {
-                messageController.message(val + " > " + x.val + "，向右查找", MessageType.INFO);
+                messageController.message(
+                    val + " > " + x.val + "，向右查找",
+                    MessageType.INFO
+                );
                 x = x.right;
             }
         }
@@ -116,9 +122,15 @@ export class BinarySearchTree {
 
             await stepController.wait();
             if (toLeft) {
-                messageController.message(val + " 小于 " + x.val + "，向左查找", MessageType.INFO);
+                messageController.message(
+                    val + " 小于 " + x.val + "，向左查找",
+                    MessageType.INFO
+                );
             } else {
-                messageController.message(val + " 大于 " + x.val + "，向右查找", MessageType.INFO);
+                messageController.message(
+                    val + " 大于 " + x.val + "，向右查找",
+                    MessageType.INFO
+                );
             }
             const next = toLeft ? x.left : x.right;
 
@@ -157,9 +169,15 @@ export class BinarySearchTree {
             const toLeft = val < x.val!;
             await stepController.wait();
             if (toLeft) {
-                messageController.message(val + " < " + x.val + "，向左查找", MessageType.INFO);
+                messageController.message(
+                    val + " < " + x.val + "，向左查找",
+                    MessageType.INFO
+                );
             } else {
-                messageController.message(val + " > " + x.val + "，向右查找", MessageType.INFO);
+                messageController.message(
+                    val + " > " + x.val + "，向右查找",
+                    MessageType.INFO
+                );
             }
             f = x;
             x = toLeft ? x.left : x.right;
@@ -171,7 +189,10 @@ export class BinarySearchTree {
 
         if (x.left !== null && x.right !== null) {
             await stepController.wait();
-            messageController.message("待删除节点有两个孩子，查找中序后继节点", MessageType.INFO);
+            messageController.message(
+                "待删除节点有两个孩子，查找中序后继节点",
+                MessageType.INFO
+            );
             let y: BinarySearchTreeNode<any> = x.right;
             let fy: BinarySearchTreeNode<any> = x;
             while (y.left !== null) {
