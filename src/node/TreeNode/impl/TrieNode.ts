@@ -52,6 +52,8 @@ export class TrieNode extends TreeNode<TrieNode> {
         this.sons.fill(null);
     }
 
+    /************************************************** */
+
     public pass: number;    // 经过当前节点的字符串数量
     public end: number;     // 以当前节点为结尾的字符串数量
 

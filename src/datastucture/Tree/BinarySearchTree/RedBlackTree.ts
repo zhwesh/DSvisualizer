@@ -1,4 +1,4 @@
-import { RedBlackTreeNode, _RB_tree_red, _RB_tree_black } from "../../../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/RedBlackTreeNode"
+import { RedBlackTreeNode, RedBlackTree_Red, RedBlackTree_Black } from "../../../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/RedBlackTreeNode"
 import { create } from "../../../node/factory";
 import { MessageController, MessageType, SuccessMessage } from "../../../controller/MessageController";
 import { StepController } from "../../../controller/StepController";
@@ -30,7 +30,7 @@ export class RedBlackTree {
 
     // 获取节点颜色
     public getColor(x: RedBlackTreeNode | null): boolean {
-        return (x === null) ? _RB_tree_black : x.color;
+        return (x === null) ? RedBlackTree_Black : x.color;
     }
 
     private root!: RedBlackTreeNode | null;                     // 根节点
@@ -65,28 +65,28 @@ export class RedBlackTree {
 
     // 插入后调整平衡，返回调整后的子树根节点
     private async insertBalance(x: RedBlackTreeNode): Promise<RedBlackTreeNode> {
-        if (this.getColor(x.left) === _RB_tree_red &&
-            (this.getColor(x.left!.left) === _RB_tree_red ||
-             this.getColor(x.left!.right) === _RB_tree_red)) {
-            if (this.getColor(x.right) === _RB_tree_red) {
+        if (this.getColor(x.left) === RedBlackTree_Red &&
+            (this.getColor(x.left!.left) === RedBlackTree_Red ||
+             this.getColor(x.left!.right) === RedBlackTree_Red)) {
+            if (this.getColor(x.right) === RedBlackTree_Red) {
                 await stepController.wait();
                 messageController.message(
                     "节点" + x.val + "的左右孩子均为红色，交换颜色",
                     MessageType.INFO
                 );
-                x.left!._set_color(_RB_tree_black);
-                x.right!._set_color(_RB_tree_black);
-                x._set_color(_RB_tree_red);
+                x.left!._set_color(RedBlackTree_Black);
+                x.right!._set_color(RedBlackTree_Black);
+                x._set_color(RedBlackTree_Red);
                 return x;
             }
-            if (this.getColor(x.left!.left) === _RB_tree_red) {
+            if (this.getColor(x.left!.left) === RedBlackTree_Red) {
                 await stepController.wait();
                 messageController.message(
                     "节点" + x.val + "出现连续两个红色左孩子，右旋",
                     MessageType.INFO
                 );
-                x.left!._set_color(_RB_tree_black);
-                x._set_color(_RB_tree_red);
+                x.left!._set_color(RedBlackTree_Black);
+                x._set_color(RedBlackTree_Red);
                 return x._rotate_right();
             }
             await stepController.wait();
@@ -95,32 +95,32 @@ export class RedBlackTree {
                 MessageType.INFO
             );
             x._set_left(x.left!._rotate_left());
-            x.left!._set_color(_RB_tree_black);
-            x._set_color(_RB_tree_red);
+            x.left!._set_color(RedBlackTree_Black);
+            x._set_color(RedBlackTree_Red);
             return x._rotate_right();
         }
-        if (this.getColor(x.right) === _RB_tree_red &&
-            (this.getColor(x.right!.left) === _RB_tree_red ||
-             this.getColor(x.right!.right) === _RB_tree_red)) {
-            if (this.getColor(x.left) === _RB_tree_red) {
+        if (this.getColor(x.right) === RedBlackTree_Red &&
+            (this.getColor(x.right!.left) === RedBlackTree_Red ||
+             this.getColor(x.right!.right) === RedBlackTree_Red)) {
+            if (this.getColor(x.left) === RedBlackTree_Red) {
                 await stepController.wait();
                 messageController.message(
                     "节点" + x.val + "的左右孩子均为红色，交换颜色",
                     MessageType.INFO
                 );
-                x.left!._set_color(_RB_tree_black);
-                x.right!._set_color(_RB_tree_black);
-                x._set_color(_RB_tree_red);
+                x.left!._set_color(RedBlackTree_Black);
+                x.right!._set_color(RedBlackTree_Black);
+                x._set_color(RedBlackTree_Red);
                 return x;
             }
-            if (this.getColor(x.right!.right) === _RB_tree_red) {
+            if (this.getColor(x.right!.right) === RedBlackTree_Red) {
                 await stepController.wait();
                 messageController.message(
                     "节点" + x.val + "出现连续两个红色右孩子，左旋节点" + x.val,
                     MessageType.INFO
                 );
-                x.right!._set_color(_RB_tree_black);
-                x._set_color(_RB_tree_red);
+                x.right!._set_color(RedBlackTree_Black);
+                x._set_color(RedBlackTree_Red);
                 return x._rotate_left();
             }
             await stepController.wait();
@@ -129,8 +129,8 @@ export class RedBlackTree {
                 MessageType.INFO
             );
             x._set_right(x.right!._rotate_right());
-            x.right!._set_color(_RB_tree_black);
-            x._set_color(_RB_tree_red);
+            x.right!._set_color(RedBlackTree_Black);
+            x._set_color(RedBlackTree_Red);
             return x._rotate_left();
         }
         return x;
@@ -162,7 +162,7 @@ export class RedBlackTree {
         if (next === null) {
             await stepController.wait();
             messageController.message("创建新节点", MessageType.INFO);
-            const node = create(RedBlackTreeNode, val, null, null, _RB_tree_red);
+            const node = create(RedBlackTreeNode, val, null, null, RedBlackTree_Red);
 
             await stepController.wait();
             messageController.message("将新节点链接到树中", MessageType.INFO);
@@ -196,8 +196,8 @@ export class RedBlackTree {
         if (this.root === null) {
             await stepController.wait();
             messageController.message("创建根节点", MessageType.INFO);
-            this._set_root(create(RedBlackTreeNode, val, null, null, _RB_tree_red));
-            this.root!._set_color(_RB_tree_black);
+            this._set_root(create(RedBlackTreeNode, val, null, null, RedBlackTree_Red));
+            this.root!._set_color(RedBlackTree_Black);
             ++this.sz;
 
             messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
@@ -211,10 +211,10 @@ export class RedBlackTree {
             return;
         }
         this._set_root(newRoot);
-        if (this.getColor(this.root) === _RB_tree_red) {
+        if (this.getColor(this.root) === RedBlackTree_Red) {
             await stepController.wait();
             messageController.message("将根节点设为黑色", MessageType.INFO);
-            this.root!._set_color(_RB_tree_black);
+            this.root!._set_color(RedBlackTree_Black);
         }
         ++this.sz;
 
@@ -225,13 +225,13 @@ export class RedBlackTree {
     private async fixDeficit(x: RedBlackTreeNode, toLeft: boolean):
         Promise<[RedBlackTreeNode, boolean]> {
         const child = toLeft ? x.left : x.right;
-        if (child !== null && this.getColor(child) === _RB_tree_red) {
+        if (child !== null && this.getColor(child) === RedBlackTree_Red) {
             await stepController.wait();
             messageController.message(
                 "将节点" + child.val + "设为黑色，修复结束",
                 MessageType.INFO
             );
-            child._set_color(_RB_tree_black);
+            child._set_color(RedBlackTree_Black);
             return [x, false];
         }
         return toLeft ? await this.fixLeft(x) : await this.fixRight(x);
@@ -241,47 +241,47 @@ export class RedBlackTree {
     private async fixLeft(x: RedBlackTreeNode):
         Promise<[RedBlackTreeNode, boolean]> {
         const s = x.right!;
-        if (this.getColor(s) === _RB_tree_red) {
+        if (this.getColor(s) === RedBlackTree_Red) {
             await stepController.wait();
             messageController.message(
                 "兄弟节点为红色，左旋节点" + x.val,
                 MessageType.INFO
             );
-            s._set_color(_RB_tree_black);
-            x._set_color(_RB_tree_red);
+            s._set_color(RedBlackTree_Black);
+            x._set_color(RedBlackTree_Red);
             const nx = x._rotate_left();
             const [fixed, deficit] = await this.fixLeft(x);
             nx._set_left(fixed);
             return [nx, deficit];
         }
-        if (this.getColor(s.left) === _RB_tree_black &&
-            this.getColor(s.right) === _RB_tree_black) {
+        if (this.getColor(s.left) === RedBlackTree_Black &&
+            this.getColor(s.right) === RedBlackTree_Black) {
             await stepController.wait();
             messageController.message(
                 "兄弟节点为黑色且两个孩子均为黑色，将兄弟节点设为红色",
                 MessageType.INFO
             );
-            s._set_color(_RB_tree_red);
-            if (this.getColor(x) === _RB_tree_red) {
+            s._set_color(RedBlackTree_Red);
+            if (this.getColor(x) === RedBlackTree_Red) {
                 await stepController.wait();
                 messageController.message(
                     "将节点" + x.val + "设为黑色，修复结束",
                     MessageType.INFO
                 );
-                x._set_color(_RB_tree_black);
+                x._set_color(RedBlackTree_Black);
                 return [x, false];
             }
             return [x, true];
         }
-        if (this.getColor(s.right) === _RB_tree_red) {
+        if (this.getColor(s.right) === RedBlackTree_Red) {
             await stepController.wait();
             messageController.message(
                 "兄弟节点的右孩子为红色，调整颜色并左旋节点" + x.val,
                 MessageType.INFO
             );
             s._set_color(this.getColor(x));
-            x._set_color(_RB_tree_black);
-            s.right!._set_color(_RB_tree_black);
+            x._set_color(RedBlackTree_Black);
+            s.right!._set_color(RedBlackTree_Black);
             return [x._rotate_left(), false];
         }
 
@@ -290,13 +290,13 @@ export class RedBlackTree {
             "兄弟节点的左孩子为红色，先右旋兄弟节点，再左旋节点" + x.val,
             MessageType.INFO
         );
-        s._set_color(_RB_tree_red);
-        s.left!._set_color(_RB_tree_black);
+        s._set_color(RedBlackTree_Red);
+        s.left!._set_color(RedBlackTree_Black);
         const z = s._rotate_right();
         x._set_right(z);
         z._set_color(this.getColor(x));
-        x._set_color(_RB_tree_black);
-        z.right!._set_color(_RB_tree_black);
+        x._set_color(RedBlackTree_Black);
+        z.right!._set_color(RedBlackTree_Black);
         return [x._rotate_left(), false];
     }
 
@@ -304,47 +304,47 @@ export class RedBlackTree {
     private async fixRight(x: RedBlackTreeNode):
         Promise<[RedBlackTreeNode, boolean]> {
         const s = x.left!;
-        if (this.getColor(s) === _RB_tree_red) {
+        if (this.getColor(s) === RedBlackTree_Red) {
             await stepController.wait();
             messageController.message(
                 "兄弟节点为红色，右旋节点" + x.val,
                 MessageType.INFO
             );
-            s._set_color(_RB_tree_black);
-            x._set_color(_RB_tree_red);
+            s._set_color(RedBlackTree_Black);
+            x._set_color(RedBlackTree_Red);
             const nx = x._rotate_right();
             const [fixed, deficit] = await this.fixRight(x);
             nx._set_right(fixed);
             return [nx, deficit];
         }
-        if (this.getColor(s.left) === _RB_tree_black &&
-            this.getColor(s.right) === _RB_tree_black) {
+        if (this.getColor(s.left) === RedBlackTree_Black &&
+            this.getColor(s.right) === RedBlackTree_Black) {
             await stepController.wait();
             messageController.message(
                 "兄弟节点为黑色且两个孩子均为黑色，将兄弟节点设为红色",
                 MessageType.INFO
             );
-            s._set_color(_RB_tree_red);
-            if (this.getColor(x) === _RB_tree_red) {
+            s._set_color(RedBlackTree_Red);
+            if (this.getColor(x) === RedBlackTree_Red) {
                 await stepController.wait();
                 messageController.message(
                     "将节点" + x.val + "设为黑色，修复结束",
                     MessageType.INFO
                 );
-                x._set_color(_RB_tree_black);
+                x._set_color(RedBlackTree_Black);
                 return [x, false];
             }
             return [x, true];
         }
-        if (this.getColor(s.left) === _RB_tree_red) {
+        if (this.getColor(s.left) === RedBlackTree_Red) {
             await stepController.wait();
             messageController.message(
                 "兄弟节点的左孩子为红色，调整颜色并右旋节点" + x.val,
                 MessageType.INFO
             );
             s._set_color(this.getColor(x));
-            x._set_color(_RB_tree_black);
-            s.left!._set_color(_RB_tree_black);
+            x._set_color(RedBlackTree_Black);
+            s.left!._set_color(RedBlackTree_Black);
             return [x._rotate_right(), false];
         }
         await stepController.wait();
@@ -352,13 +352,13 @@ export class RedBlackTree {
             "兄弟节点的右孩子为红色，先左旋兄弟节点，再右旋节点" + x.val,
             MessageType.INFO
         );
-        s._set_color(_RB_tree_red);
-        s.right!._set_color(_RB_tree_black);
+        s._set_color(RedBlackTree_Red);
+        s.right!._set_color(RedBlackTree_Black);
         const z = s._rotate_left();
         x._set_left(z);
         z._set_color(this.getColor(x));
-        x._set_color(_RB_tree_black);
-        z.left!._set_color(_RB_tree_black);
+        x._set_color(RedBlackTree_Black);
+        z.left!._set_color(RedBlackTree_Black);
         return [x._rotate_right(), false];
     }
 
@@ -375,7 +375,7 @@ export class RedBlackTree {
 
             await stepController.wait();
             messageController.message("删除节点", MessageType.INFO);
-            const black = this.getColor(x) === _RB_tree_black;
+            const black = this.getColor(x) === RedBlackTree_Black;
             x._delete();
             return [child, black];
         }
@@ -474,7 +474,7 @@ export class RedBlackTree {
 
             await stepController.wait();
             messageController.message("删除节点", MessageType.INFO);
-            const black = this.getColor(x) === _RB_tree_black;
+            const black = this.getColor(x) === RedBlackTree_Black;
             x._delete();
             return [child, true, black];
         }
@@ -501,7 +501,7 @@ export class RedBlackTree {
         if (deficit && this.root !== null) {
             await stepController.wait();
             messageController.message("将根节点设为黑色，修复结束", MessageType.INFO);
-            this.root._set_color(_RB_tree_black);
+            this.root._set_color(RedBlackTree_Black);
         }
         --this.sz;
 

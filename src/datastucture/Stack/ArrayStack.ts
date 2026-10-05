@@ -79,7 +79,7 @@ export class ArrayStack {
      * 获得栈顶
      * @returns 栈顶元素值
      */
-    public async peek(): Promise<number | null> {
+    public async top(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("栈为空", MessageType.ERROR);
             return null;

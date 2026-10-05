@@ -81,7 +81,7 @@ export class Trie {
      * 向树中添加字符串str
      * @param str 要添加的字符串
      */
-    public async add(str: string): Promise<void> {
+    public async insert(str: string): Promise<void> {
         if (!this.check(str)) {
             return;
         }
@@ -196,7 +196,7 @@ export class Trie {
      * 删除一个str
      * @param str 要删除的字符串
      */
-    public async remove(str: string): Promise<void> {
+    public async delete(str: string): Promise<void> {
         if (!this.check(str)) {
             return;
         }

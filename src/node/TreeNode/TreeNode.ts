@@ -22,6 +22,8 @@ export class TreeNode<T extends TreeNode<T>> extends DataNode {
         this.sons = Array(0);
     }
 
+    /************************************************** */
+
     public sons: (T | null)[];    // 当前节点的所有孩子
 
     constructor(sons: (T | null)[]) {

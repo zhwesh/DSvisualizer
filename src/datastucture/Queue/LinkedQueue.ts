@@ -62,7 +62,7 @@ export class LinkedQueue {
      * 获取队首
      * @returns 队首元素
      */
-    public async peek(): Promise<number | null> {
+    public async top(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return null;
@@ -77,7 +77,7 @@ export class LinkedQueue {
      * 将val添加至队尾
      * @param val 新值
      */
-    public async add(val: number): Promise<void> {
+    public async push(val: number): Promise<void> {
         await stepController.wait();
         messageController.message("创建节点", MessageType.INFO);
         let node = create(SinglyLinkedNode, val, null);
@@ -95,7 +95,7 @@ export class LinkedQueue {
     /**
      * 弹出队首
      */
-    public async poll(): Promise<void> {
+    public async pop(): Promise<void> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return;

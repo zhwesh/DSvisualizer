@@ -76,7 +76,7 @@ export class ArrayDeque {
      * 获取队首
      * @returns 队首元素
      */
-    public async peekFirst(): Promise<number | null> {
+    public async getFirst(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return null;
@@ -91,7 +91,7 @@ export class ArrayDeque {
      * 获取队尾
      * @returns 队尾元素
      */
-    public async peekLast(): Promise<number | null> {
+    public async getLast(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return null;
@@ -106,7 +106,7 @@ export class ArrayDeque {
      * 将val添加至队首
      * @param val 新数据
      */
-    public async addFirst(val: number): Promise<void> {
+    public async pushFirst(val: number): Promise<void> {
         if (this.arr.head! === 0) {
             await stepController.wait();
             messageController.message("扩容", MessageType.INFO);
@@ -124,7 +124,7 @@ export class ArrayDeque {
      * 将val添加至队尾
      * @param val 新元素
      */
-    public async addLast(val: number): Promise<void> {
+    public async pushLast(val: number): Promise<void> {
         if (this.arr.tail! === this.arr.data.length) {
             await stepController.wait();
             messageController.message("队列容量已满，扩容", MessageType.INFO);
@@ -141,7 +141,7 @@ export class ArrayDeque {
     /**
      * 弹出队首
      */
-    public async pollFirst(): Promise<void> {
+    public async popFirst(): Promise<void> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return;
@@ -156,7 +156,7 @@ export class ArrayDeque {
     /**
      * 弹出队尾 
      */
-    public async pollLast(): Promise<void> {
+    public async popLast(): Promise<void> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return;

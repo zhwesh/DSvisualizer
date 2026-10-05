@@ -1,7 +1,7 @@
 import { BinarySearchTreeNode } from "../BinarySearchTreeNode";
 
-export const _RB_tree_red: boolean = true;
-export const _RB_tree_black: boolean = false;
+export const RedBlackTree_Red: boolean = true;
+export const RedBlackTree_Black: boolean = false;
 
 /**
  * 红黑树节点

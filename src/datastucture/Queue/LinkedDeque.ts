@@ -53,7 +53,7 @@ export class LinkedDeque {
      * 获取队首
      * @returns 队首元素
      */
-    public async peekFirst(): Promise<number | null> {
+    public async getFirst(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return null;
@@ -68,7 +68,7 @@ export class LinkedDeque {
      * 获取队尾
      * @returns 队尾元素
      */
-    public async peekLast(): Promise<number | null> {
+    public async getLast(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return null;
@@ -83,7 +83,7 @@ export class LinkedDeque {
      * 将val添加至队首
      * @param val 新值
      */
-    public async addFirst(val: number): Promise<void> {
+    public async pushFirst(val: number): Promise<void> {
         messageController.message("创建节点", MessageType.INFO);
         let node = create(DoublyLinkedListNode, val, null, null);
 
@@ -106,7 +106,7 @@ export class LinkedDeque {
      * 将val添加至队尾
      * @param val 新值
      */
-    public async addLast(val: number): Promise<void> {
+    public async pushLast(val: number): Promise<void> {
         messageController.message("创建节点", MessageType.INFO);
         let node = create(DoublyLinkedListNode, val, null, null);
 
@@ -128,7 +128,7 @@ export class LinkedDeque {
     /**
      * 弹出队首
      */
-    public async pollFirst(): Promise<void> {
+    public async popFirst(): Promise<void> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return;
@@ -152,7 +152,7 @@ export class LinkedDeque {
     /**
      * 弹出队尾
      */
-    public async pollLast(): Promise<void> {
+    public async popLast(): Promise<void> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return;

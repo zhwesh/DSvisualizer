@@ -83,7 +83,7 @@ export class BinaryHeap {
      * 获取堆顶
      * @returns 堆顶元素
      */
-    public async peek(): Promise<number | null> {
+    public async top(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("堆为空", MessageType.ERROR);
             return null;
@@ -98,7 +98,7 @@ export class BinaryHeap {
      * 将val插入堆
      * @param val 要插入的值
      */
-    public async add(val: number): Promise<void> {
+    public async push(val: number): Promise<void> {
         if (this.sz + 1 >= this.arr.data.length) {
             await stepController.wait();
             messageController.message("数组容量已满，扩容", MessageType.INFO);
@@ -136,7 +136,7 @@ export class BinaryHeap {
     /**
      * 弹出堆顶
      */
-    public async poll(): Promise<void> {
+    public async pop(): Promise<void> {
         if (this.isEmpty()) {
             messageController.message("堆为空", MessageType.ERROR);
             return;

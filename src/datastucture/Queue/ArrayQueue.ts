@@ -75,7 +75,7 @@ export class ArrayQueue {
      * 获取队首
      * @returns 队首元素
      */
-    public async peek(): Promise<number | null> {
+    public async top(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return null;
@@ -90,7 +90,7 @@ export class ArrayQueue {
      * 将val添加至队尾
      * @param val 新元素
      */
-    public async add(val: number): Promise<void> {
+    public async push(val: number): Promise<void> {
         if (this.arr.tail! === this.arr.data.length) {
             await stepController.wait();
             messageController.message("队列容量已满，扩容", MessageType.INFO);
@@ -107,7 +107,7 @@ export class ArrayQueue {
     /**
      * 弹出队首
      */
-    public async poll(): Promise<void> {
+    public async pop(): Promise<void> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return;
