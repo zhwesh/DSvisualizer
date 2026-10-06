@@ -4,18 +4,6 @@ import { DataNode } from "../DataNode";
  * 二叉树节点
  */
 export class BinaryTreeNode<T extends BinaryTreeNode<T>> extends DataNode {
-    public left: T | null;          // 左孩子
-    public right: T | null;         // 右孩子
-
-    constructor(
-        left: T | null,
-        right: T | null
-    ) {
-        super();
-        this.left = left;
-        this.right = right;
-    }
-
     /**
      * 设置当前节点的左孩子
      * 
@@ -46,5 +34,19 @@ export class BinaryTreeNode<T extends BinaryTreeNode<T>> extends DataNode {
     public _delete(): void {
         this.left = null;
         this.right = null;
+    }
+
+    /************************************************** */
+    
+    public left: T | null;          // 左孩子
+    public right: T | null;         // 右孩子
+
+    constructor(
+        left: T | null,
+        right: T | null
+    ) {
+        super();
+        this.left = left;
+        this.right = right;
     }
 }

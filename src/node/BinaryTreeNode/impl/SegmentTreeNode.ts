@@ -20,6 +20,8 @@ export class SegmentTreeNode extends BinaryTreeNode<SegmentTreeNode> {
         this.sum = sum;
     }
 
+    /************************************************** */
+
     public lazy: number | null; // 懒更新信息
     public sum: number | null;  // 当前区间的和
 

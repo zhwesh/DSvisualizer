@@ -5,14 +5,6 @@ import { DataNode } from "../DataNode";
  * 当data内某位置的数字为null时不显示数字
  */
 export class ArrayNode extends DataNode {
-    // 底层数组（值为null的位置不显示数字）
-    public data: (number | null)[];
-
-    constructor(data: (number | null)[]) {
-        super();
-        this.data = data;
-    }
-
     /**
      * 将当前数组中索引为idx的元素设为val
      * 
@@ -61,5 +53,15 @@ export class ArrayNode extends DataNode {
         const data: (number | null)[] = this.data;
         this.data = other.data;
         other.data = data;
+    }
+
+    /************************************************** */
+
+    // 底层数组（值为null的位置不显示数字）
+    public data: (number | null)[];
+
+    constructor(data: (number | null)[]) {
+        super();
+        this.data = data;
     }
 };

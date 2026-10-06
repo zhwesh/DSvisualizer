@@ -13,6 +13,8 @@ export class BinarySearchTreeNode<T extends BinarySearchTreeNode<T>>
         this.val = val;
     }
 
+    /************************************************** */
+
     public val: number | null;
 
     constructor(

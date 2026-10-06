@@ -60,6 +60,8 @@ export class BinaryIndexedTreeNode extends ArrayNode {
         this.dataColor.fill(BinaryIndexedTree_DATA_NONE);
     }
 
+    /************************************************** */
+
     public tree: (number | null)[];     // 树状数组
     public treeColor: number[];         // 覆盖条颜色
     public dataColor: boolean[];        // 原始数组节点颜色

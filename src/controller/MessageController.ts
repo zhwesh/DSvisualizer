@@ -6,7 +6,7 @@ export const SuccessMessage = {
     SET_SUCCESS: "修改完成",
     INSERT_SUCCESS: "插入完成",
     DELETE_SUCCESS: "删除完成",
-    CLEAR_SUCCESS: "清理完成",
+    CLEAR_SUCCESS: "清理完成"
 } as const;
 
 /**

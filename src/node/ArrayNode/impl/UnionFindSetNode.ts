@@ -9,14 +9,6 @@ import { ArrayNode } from "../ArrayNode";
  * sz[i]为以i为根的集合大小（仅当i为根时有意义）
  */
 export class UnionFindSetNode extends ArrayNode {
-    // 集合大小数组
-    public sz: (number)[];
-
-    constructor(father: number[], sz: number[]) {
-        super(father);
-        this.sz = sz;
-    }
-
     /**
      * 设置以x为根的集合大小
      * 
@@ -27,5 +19,15 @@ export class UnionFindSetNode extends ArrayNode {
      */
     public _set_size(x: number, f: number): void {
         this.sz[x] = f;
+    }
+
+    /************************************************** */
+
+    // 集合大小数组
+    public sz: (number)[];
+
+    constructor(father: number[], sz: number[]) {
+        super(father);
+        this.sz = sz;
     }
 }

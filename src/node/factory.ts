@@ -1,18 +1,14 @@
 import { DataNode } from "./DataNode";
 
-// 统一出口：算法层任何原子操作（含创建）都从这里通知可视化层
+// 统一出口：算法层任何原子操作（包括创建对象）都从此处通知可视化层
 type OpHook = (node: DataNode, method: string, args: any[]) => void;
 
 let opHook: OpHook | null = null;
 
-/** 由可视化层注册（页面初始化时调一次） */
+/** 由可视化层注册（页面初始化时调用一次） */
 export function setOpHook(h: OpHook | null): void {
     opHook = h;
 }
-
-// 约定：下划线开头即原子操作（单一真相源就在这儿）
-const isAtomic = (p: string | symbol): p is string =>
-    typeof p === "string" && p.startsWith("_");
 
 /**
  * 通用工厂：创建实例并加装代理
@@ -28,7 +24,8 @@ export function create<T extends new (...args: any[]) => any>(
         get(t, prop, receiver) {
             const value = Reflect.get(t, prop, receiver);
             // 非原子操作或非函数：原样返回
-            if (!isAtomic(prop) || typeof value !== "function") {
+            if (!(typeof prop === "string") || !prop.startsWith("_") ||
+                typeof value !== "function") {
                 return value;
             }
             // 原子操作：包装动画逻辑

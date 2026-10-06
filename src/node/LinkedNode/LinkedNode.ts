@@ -1,17 +1,6 @@
 import { DataNode } from "../DataNode";
 
 export class LinkedNode<T extends LinkedNode<T>> extends DataNode {
-    // 节点的值（当值为null时不显示）
-    public val: number | null;
-    // 后继节点
-    public next: T | null;
-
-    constructor(val: number | null, next: T | null) {
-        super();
-        this.val = val;
-        this.next = next;
-    }
-
     /**
      * 设置当前节点的值
      * 
@@ -46,11 +35,14 @@ export class LinkedNode<T extends LinkedNode<T>> extends DataNode {
 
     /************************************************** */
 
-    /**
-     * 获取当前节点的后继节点
-     * @returns 当前节点的后继节点
-     */
-    public getNext(): T | null {
-        return this.next;
+    // 节点的值（当值为null时不显示）
+    public val: number | null;
+    // 后继节点
+    public next: T | null;
+
+    constructor(val: number | null, next: T | null) {
+        super();
+        this.val = val;
+        this.next = next;
     }
 }
