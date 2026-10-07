@@ -6,11 +6,21 @@ import { DataNode } from "../DataNode";
  */
 export class ArrayNode extends DataNode {
     /**
+     * 将val添加至当前数组
+     * 
+     * 动画效果：将val添加至当前数组
+     * 
+     * @param val 待添加的值
+     */
+    public _add_value(val: number | null): void {
+        this.data.push(val);
+    }
+
+    /**
      * 将当前数组中索引为idx的元素设为val
      * 
      * 动画效果：将当前对象的数组data中索引为idx的元素设为val
      * 
-     * @param array 待修改数组
      * @param idx 数组索引
      * @param val 新值
      */
