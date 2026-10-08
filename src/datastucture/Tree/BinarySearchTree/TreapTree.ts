@@ -288,7 +288,7 @@ export class TreapTree {
         } else {
             await stepController.wait();
             messageController.message(
-                node.left.priority + " ≤ " + node.right.priority + "较小，左旋",
+                node.left.priority + " ≥ " + node.right.priority + "，左旋",
                 MessageType.INFO
             );
             const newRoot = node._rotate_left();

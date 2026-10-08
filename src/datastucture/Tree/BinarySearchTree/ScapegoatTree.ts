@@ -366,7 +366,8 @@ export class ScapegoatTree {
             }
         }
 
-        messageController.message("值'" + val + "'不存在", MessageType.WARNING);
+        messageController.message("值'" + val + "'不存在", MessageType.INFO);
+        messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return false;
     }
 
@@ -420,7 +421,7 @@ export class ScapegoatTree {
         messageController.message("查询键'" + val + "'的排名", MessageType.INFO);
         const res = await this.small(val);
         if (this.findNode(val) === null) {
-            messageController.message("值'" + val + "'不存在", MessageType.ERROR);
+            messageController.message("值'" + val + "'不存在", MessageType.INFO);
             return null;
         }
         return res + 1;
@@ -494,7 +495,7 @@ export class ScapegoatTree {
         }
 
         if (res === null) {
-            messageController.message("值'" + val + "'没有前驱", MessageType.WARNING);
+            messageController.message("值'" + val + "'没有前驱", MessageType.INFO);
         }
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return res;
@@ -528,7 +529,7 @@ export class ScapegoatTree {
         }
 
         if (res === null) {
-            messageController.message("值'" + val + "'没有后继", MessageType.WARNING);
+            messageController.message("值'" + val + "'没有后继", MessageType.INFO);
         }
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return res;

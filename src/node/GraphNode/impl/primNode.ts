@@ -7,13 +7,6 @@ export const prim_BLUE: number = 2;         // 已加入优先队列
 
 export class primNode extends UndirectedGraphNode {
     /**
-     * 将边集按w排序
-     */
-    public _sort_edges(): void {
-        this.edges.sort((a, b) => (a[2] - b[2]));
-    }
-
-    /**
      * 设置边的颜色
      * @param u 边的端点
      * @param v 边的另一个端点
@@ -24,16 +17,31 @@ export class primNode extends UndirectedGraphNode {
         this.edgeColor[v].set(u, color);
     }
 
+    /**
+     * 重置图的状态
+     * 
+     * 动画效果：将所有边的颜色恢复为未选中
+     */
+    public _clear(): void {
+        this.edgeColor = Array.from(
+            { length: this.nodeCnt },
+            () => new Map<number, number>()
+        );
+        for (let u = 0; u < this.nodeCnt; ++u) {
+            for (let [v] of this.to[u]) {
+                this.edgeColor[u].set(v!, prim_NONE);
+                this.edgeColor[v!].set(u!, prim_NONE);
+            }
+        }
+    }
+
     /************************************************** */
 
     // 边的颜色
     public edgeColor: Map<number, number>[];
-    // 边集
-    public edges: number[][];
 
     constructor(edges: number[][]) {
         super(edges);
-        this.edges = edges;
         this.edgeColor = Array.from(
             { length: this.nodeCnt },
             () => new Map<number, number>()

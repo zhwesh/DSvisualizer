@@ -37,13 +37,14 @@ npm run dev
 ```
 
 ## 使用项目
-下载Release包，解压后点击根目录文件`index.html`即可运行
+下载Release包，解压后在根目录用任意静态文件服务器打开`index.html`（直接双击本地文件会被浏览器拦截，ES模块脚本无法通过file://加载）
 
 或在项目源码根目录下执行：
 ```
 npm run build
+npm run preview
 ```
-编译产物输出至`dist/`，双击其中的`index.html`即可使用
+编译产物输出至`dist/`，`npm run preview` 会以静态服务器方式在本地预览；也可将`dist/`部署到任意静态服务器
 
 # 收录的数据结构与算法
 

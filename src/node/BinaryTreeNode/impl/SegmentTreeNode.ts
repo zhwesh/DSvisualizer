@@ -6,6 +6,9 @@ import { BinaryTreeNode } from "../BinaryTreeNode";
 export class SegmentTreeNode extends BinaryTreeNode<SegmentTreeNode> {
     /**
      * 设置懒更新信息
+     * 
+     * 动画效果：节点lazy值更新为lazy
+     * 
      * @param lazy 新懒更新信息 
      */
     public _set_lazy(lazy: number | null): void {
@@ -14,6 +17,9 @@ export class SegmentTreeNode extends BinaryTreeNode<SegmentTreeNode> {
 
     /**
      * 设置当前节点的和
+     * 
+     * 动画效果：节点sum值更新为sum
+     * 
      * @param sum 当前节点的和
      */
     public _set_sum(sum: number | null): void {

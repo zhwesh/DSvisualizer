@@ -1,7 +1,7 @@
 import {
     floydNode, floyd_node_GREEN,
     floyd_node_BLUE, floyd_node_NONE
-} from "../../node/GraphNode/impl/floydNode";
+} from "../../node/GraphNode/impl/FloydNode";
 import { MessageController, MessageType } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
 import { create } from "../../node/factory";
@@ -19,10 +19,17 @@ export class floyd {
         this.node = create(floydNode, edges);
     }
 
+    // 初始化
+    private init(): void {
+        this.node._clear();
+    }
+
     /**
      * 执行算法
      */
     public async execute(): Promise<void> {
+        this.init();
+
         if (this.node.nodeCnt === 0) {
             messageController.message("此图为空", MessageType.WARNING);
             return;

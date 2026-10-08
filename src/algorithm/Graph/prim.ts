@@ -1,7 +1,7 @@
 import { MessageController, MessageType } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
 import { create } from "../../node/factory";
-import { prim_BLUE, prim_GREEN, prim_NONE, primNode } from "../../node/GraphNode/impl/primNode";
+import { prim_BLUE, prim_GREEN, prim_NONE, primNode } from "../../node/GraphNode/impl/PrimNode";
 
 let messageController = MessageController.getMessageController();
 let stepController = StepController.getStepController();
@@ -11,12 +11,17 @@ let stepController = StepController.getStepController();
  */
 export class prim {
     private graph: primNode;
-    private dist: number[];     // 每个节点到生成树的最小边权
-    private pre: number[];      // 最小边在生成树内的端点
-    private inTree: boolean[];  // 节点是否已加入生成树
+    private dist!: number[];    // 每个节点到生成树的最小边权
+    private pre!: number[];     // 最小边在生成树内的端点
+    private inTree!: boolean[]; // 节点是否已加入生成树
 
     constructor(edges: number[][]) {
         this.graph = create(primNode, edges);
+    }
+
+    // 初始化
+    private init(): void {
+        this.graph._clear();
         this.dist = new Array(this.graph.nodeCnt).fill(Infinity);
         this.pre = new Array(this.graph.nodeCnt).fill(-1);
         this.inTree = new Array(this.graph.nodeCnt).fill(false);
@@ -26,9 +31,9 @@ export class prim {
      * 执行算法
      */
     public async execute(): Promise<void> {
-        const n = this.graph.nodeCnt;
+        this.init();
 
-        if (n === 0) {
+        if (this.graph.nodeCnt === 0) {
             messageController.message("此图为空", MessageType.WARNING);
             return;
         }
@@ -38,9 +43,9 @@ export class prim {
         this.dist[0] = 0;
 
         let selectedCnt = 0;    // 已经选中的边数量
-        for (let t = 0; t < n; ++t) {
+        for (let t = 0; t < this.graph.nodeCnt; ++t) {
             let u = -1;
-            for (let i = 0; i < n; ++i) {
+            for (let i = 0; i < this.graph.nodeCnt; ++i) {
                 if (!this.inTree[i] && (u === -1 || this.dist[i] < this.dist[u])) {
                     u = i;
                 }
@@ -85,7 +90,8 @@ export class prim {
                 }
             }
 
-            if (n > 1 && selectedCnt === n - 1) {
+            if (this.graph.nodeCnt > 1 &&
+                selectedCnt === this.graph.nodeCnt - 1) {
                 messageController.message(
                     "边数达到" + selectedCnt + "，退出循环",
                     MessageType.INFO

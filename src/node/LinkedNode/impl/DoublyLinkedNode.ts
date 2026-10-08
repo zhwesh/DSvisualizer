@@ -15,9 +15,20 @@ export class DoublyLinkedListNode extends LinkedNode<DoublyLinkedListNode> {
         this.last = last;
     }
 
+    /**
+     * 删除当前节点
+     * 
+     * 动画效果：当前节点消失
+     */
+    public _delete(): void {
+        this.val = null;
+        this.next = null;
+        this.last = null;
+    }
+
     /************************************************** */
 
-    last: DoublyLinkedListNode | null;
+    public last: DoublyLinkedListNode | null;
 
     constructor(val: number | null,
         next: DoublyLinkedListNode | null,

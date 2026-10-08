@@ -14,7 +14,7 @@ export class LinkedQueue {
      * 设置哨兵节点
      * @param header 要设置的哨兵节点
      */
-    public _set_header(header: SinglyLinkedNode) {
+    public _set_header(header: SinglyLinkedNode): void {
         this.header = header;
     }
 
@@ -22,14 +22,14 @@ export class LinkedQueue {
      * 设置队尾指针
      * @param tail 要设置的队尾指针
      */
-    public _set_tail(tail: SinglyLinkedNode) {
+    public _set_tail(tail: SinglyLinkedNode): void {
         this.tail = tail;
     }
 
     /**
      * 动画效果：清空队列，哨兵节点后继指针指向null
      */
-    public async _clear(): Promise<void> {
+    public _clear(): void {
         this.header._set_next(null);
         this._set_tail(this.header);
         this.sz = 0;
@@ -119,13 +119,13 @@ export class LinkedQueue {
     }
 
     // 清除所有元素
-    public async clear(): Promise<void> {
+    public clear(): void {
         if (this.isEmpty()) {
             messageController.message("队列已经为空", MessageType.WARNING);
             return;
         }
 
-        await this._clear();
+        this._clear();
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }

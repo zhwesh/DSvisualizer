@@ -16,18 +16,18 @@ export class KMPNode extends ArrayNode {
      * 
      * @param ptr 指针位置
      */
-    public _set_str_ptr(ptr: number) {
+    public _set_str_ptr(ptr: number): void {
         this.strPtr = ptr;
     }
 
     /**
      * 设置模式串指针
      * 
-     * 动画效果：模式串指针指向str[ptr]
+     * 动画效果：模式串指针指向template[ptr]
      * 
      * @param ptr 指针位置
      */
-    public _set_template_ptr(ptr: number) {
+    public _set_template_ptr(ptr: number): void {
         this.templatePtr = ptr;
     }
 
@@ -37,9 +37,9 @@ export class KMPNode extends ArrayNode {
      * 动画效果：移动template使之与str对应位置对齐
      * 
      * @param _idx1 str索引
-     * @param _idx2 templat索引
+     * @param _idx2 template索引
      */
-    public _align(_idx1: number, _idx2: number) { }
+    public _align(_idx1: number, _idx2: number): void { }
 
     /**
      * 设置模式串前缀颜色
@@ -77,15 +77,23 @@ export class KMPNode extends ArrayNode {
 
     /************************************************** */
 
-    public str: string;         // 待匹配字符串
-    public template: string;    // 模式串
-    public strPtr: number;      // 待匹配字符串指针（当前待匹配位置）
-    public templatePtr: number; // 模式串指针（当前待匹配位置）
+    // 空校验
+    private static strNotEmptyAssert(str: string): void {
+        if (str.length === 0) {
+            throw new Error("待匹配字符串禁止为空");
+        }
+    }
+
+    public str: string;             // 待匹配字符串
+    public template: string;        // 模式串
+    public strPtr: number;          // 待匹配字符串指针（当前待匹配位置）
+    public templatePtr: number;     // 模式串指针（当前待匹配位置）
     public prefixColor: boolean[];  // 前缀颜色（蓝色）
     public suffixColor: boolean[];  // 后缀颜色（绿色）
 
     constructor(str: string, template: string) {
-        super(new Array(str.length).fill(null));
+        KMPNode.strNotEmptyAssert(str);
+        super(new Array(template.length).fill(null));
         this.str = str;
         this.template = template;
         this.strPtr = this.templatePtr = 0;

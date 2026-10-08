@@ -56,7 +56,7 @@ export class MessageController {
      *                前者为用于展示的消息，后者为消息种类
      *                错误信息显示为红色，警告信息显示为橙色，普通信息显示为黑色
      */
-    public setMessageHandler(handler: (msg: string, type: number) => void) {
+    public setMessageHandler(handler: (msg: string, type: number) => void): void {
         this.messageHandler = handler;
     }
 

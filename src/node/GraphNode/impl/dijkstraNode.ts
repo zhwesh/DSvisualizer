@@ -18,7 +18,7 @@ export class dijkstraNode extends DirectedGraphNode {
      * @param node 节点
      * @param dis 距离
      */
-    public _set_dis(node: number, dis: number) {
+    public _set_dis(node: number, dis: number): void {
         this.dis[node] = dis;
     }
 
@@ -27,7 +27,7 @@ export class dijkstraNode extends DirectedGraphNode {
      * 
      * 动画效果：dis数组元素全设为无穷大、图上所有颜色清空
      */
-    public _clear() {
+    public _clear(): void {
         this.dis.fill(Infinity);
         this.nodeColor.fill(dijkstra_node_NONE);
         this.edgeColor = Array.from(
@@ -49,7 +49,7 @@ export class dijkstraNode extends DirectedGraphNode {
      * @param node 节点
      * @param color 颜色
      */
-    public _set_node_color(node: number, color: number) {
+    public _set_node_color(node: number, color: number): void {
         this.nodeColor[node] = color;
     }
 
@@ -68,7 +68,7 @@ export class dijkstraNode extends DirectedGraphNode {
 
     /************************************************** */
 
-    private static weightAssert(edges: number[][]) {
+    private static weightAssert(edges: number[][]): void {
         for (const [, , w] of edges) {
             if (w < 0) {
                 throw new Error("边权必须大于等于0");

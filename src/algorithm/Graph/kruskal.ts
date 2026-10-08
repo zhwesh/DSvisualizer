@@ -1,7 +1,7 @@
 import {
     kruskal_BLUE, kruskal_GREEN,
     kruskal_NONE, kruskalNode
-} from "../../node/GraphNode/impl/kruskalNode";
+} from "../../node/GraphNode/impl/KruskalNode";
 import { MessageController, MessageType } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
 import { create } from "../../node/factory";
@@ -14,10 +14,15 @@ let stepController = StepController.getStepController();
  */
 export class kruskal {
     private graph: kruskalNode;
-    private father: number[];
+    private father!: number[];
 
     constructor(edges: number[][]) {
         this.graph = create(kruskalNode, edges);
+    }
+
+    // 初始化
+    private init(): void {
+        this.graph._clear();
         this.father = new Array(this.graph.nodeCnt);
         for (let i = 0; i < this.graph.nodeCnt; ++i) {
             this.father[i] = i;
@@ -37,6 +42,8 @@ export class kruskal {
      * 执行算法
      */
     public async execute(): Promise<void> {
+        this.init();
+
         if (this.graph.nodeCnt === 0) {
             messageController.message("此图为空", MessageType.WARNING);
             return;

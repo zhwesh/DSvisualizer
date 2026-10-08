@@ -6,6 +6,9 @@ import { ArrayNode } from "../ArrayNode";
 export class ArrayQueueNode extends ArrayNode {
     /**
      * 设置队首指针
+     * 
+     * 动画效果：队首指针指向data[head]
+     * 
      * @param head 队首指针索引
      */
     public _set_head(head: number | null): void {
@@ -14,6 +17,9 @@ export class ArrayQueueNode extends ArrayNode {
 
     /**
      * 设置队尾指针
+     * 
+     * 动画效果：队尾指针指向data[tail]
+     * 
      * @param tail 队尾指针索引
      */
     public _set_tail(tail: number | null): void {

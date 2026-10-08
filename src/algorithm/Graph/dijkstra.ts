@@ -2,7 +2,7 @@ import {
     dijkstra_node_BLUE, dijkstra_node_GREEN,
     dijkstra_edge_GREEN, dijkstra_edge_NONE,
     dijkstraNode
-} from "../../node/GraphNode/impl/dijkstraNode";
+} from "../../node/GraphNode/impl/DijkstraNode";
 import { MessageController, MessageType } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
 import { create } from "../../node/factory";
@@ -21,7 +21,6 @@ export class dijkstra {
 
     constructor(edges: number[][]) {
         this.node = create(dijkstraNode, edges);
-        this.init();
     }
 
     // 初始化
@@ -30,6 +29,7 @@ export class dijkstra {
         this.father = new Array(n).fill(-1);
         this.vis = new Array(n).fill(false);
         this.heap = [];
+        this.node._clear();
     }
 
     /**
@@ -37,7 +37,6 @@ export class dijkstra {
      * @param start 起点
      */
     public async execute(start: number = 0): Promise<void> {
-        this.node._clear();
         this.init();
 
         if (this.node.nodeCnt === 0) {

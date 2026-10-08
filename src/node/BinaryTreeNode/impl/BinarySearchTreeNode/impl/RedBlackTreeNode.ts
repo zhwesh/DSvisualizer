@@ -19,19 +19,6 @@ export class RedBlackTreeNode extends BinarySearchTreeNode<RedBlackTreeNode> {
     }
 
     /**
-     * 交换当前节点与其他节点的颜色
-     * 
-     * 动画效果：交换当前节点与其他节点的颜色
-     * 
-     * @param other 另一个节点
-     */
-    public _swap_color(other: RedBlackTreeNode): void {
-        const tmp = other.color;
-        other.color = this.color;
-        this.color = tmp;
-    }
-
-    /**
      * 右旋
      * 
      * 动画效果：对当前节点进行右旋操作

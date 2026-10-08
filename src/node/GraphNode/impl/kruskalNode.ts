@@ -29,6 +29,24 @@ export class kruskalNode extends UndirectedGraphNode {
         this.edgeColor[v].set(u, color);
     }
 
+    /**
+     * 重置图的状态
+     * 
+     * 动画效果：将所有边的颜色恢复为未选中
+     */
+    public _clear(): void {
+        this.edgeColor = Array.from(
+            { length: this.nodeCnt },
+            () => new Map<number, number>()
+        );
+        for (let u = 0; u < this.nodeCnt; ++u) {
+            for (let [v] of this.to[u]) {
+                this.edgeColor[u].set(v!, kruskal_NONE);
+                this.edgeColor[v!].set(u!, kruskal_NONE);
+            }
+        }
+    }
+
     /************************************************** */
 
     // 边的颜色

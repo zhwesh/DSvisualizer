@@ -28,6 +28,10 @@ export const BinaryIndexedTree_DATA_NONE: boolean = false;
 export class BinaryIndexedTreeNode extends ArrayNode {
     /**
      * 设置树状数组节点
+     * 
+     * 动画效果：tree[idx]设为sum
+     * 
+     * @param idx 索引
      * @param sum 要设置的值
      */
     public _set_tree(idx: number, sum: (number | null)): void {
@@ -36,6 +40,10 @@ export class BinaryIndexedTreeNode extends ArrayNode {
 
     /**
      * 设置树状数组节点对应的覆盖条颜色
+     * 
+     * 动画效果：覆盖条treeColor[idx]设为color
+     * 
+     * @param idx 索引
      * @param color 要设置的颜色
      */
     public _set_tree_color(idx: number, color: number): void {
@@ -44,6 +52,10 @@ export class BinaryIndexedTreeNode extends ArrayNode {
 
     /**
      * 设置原始数据颜色
+     * 
+     * 动画效果：原始数据dataColor[idx]设为color
+     * 
+     * @param idx 索引
      * @param color 要设置的颜色
      */
     public _set_data_color(idx: number, color: boolean): void {

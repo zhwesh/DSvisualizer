@@ -18,7 +18,7 @@ export class DataNode {
      * 重置计数器
      * （图形页面层应在每次加载新页面时调用一次）
      */
-    public static restart() {
+    public static restart(): void {
         DataNode.cnt = 0;
     }
 

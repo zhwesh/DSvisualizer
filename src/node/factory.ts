@@ -1,7 +1,5 @@
-import { DataNode } from "./DataNode";
-
 // 统一出口：算法层任何原子操作（包括创建对象）都从此处通知可视化层
-type OpHook = (node: DataNode, method: string, args: any[]) => void;
+type OpHook = (target: object, method: string, args: any[]) => void;
 
 let opHook: OpHook | null = null;
 
@@ -31,13 +29,13 @@ export function create<T extends new (...args: any[]) => any>(
             // 原子操作：包装动画逻辑
             return (...a: any[]) => {
                 const result = (value as Function).apply(t, a);
-                opHook?.(proxy as unknown as DataNode, prop, a);
+                opHook?.(proxy as unknown as object, prop, a);
                 return result;
             };
         },
     });
 
     // 创建也走同一个出口
-    opHook?.(proxy as unknown as DataNode, "_create", args);
+    opHook?.(proxy as unknown as object, "_create", args);
     return proxy;
 }

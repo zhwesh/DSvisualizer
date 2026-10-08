@@ -14,7 +14,7 @@ export class DoubleLinkedList {
      * 设置头节点
      * @param head 要设置的头节点
      */
-    public _set_head(head: DoublyLinkedListNode | null) {
+    public _set_head(head: DoublyLinkedListNode | null): void {
         this.head = head;
     }
 

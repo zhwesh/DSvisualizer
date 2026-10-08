@@ -12,7 +12,7 @@ export class BinaryTreeTraversalNode extends BinaryTreeNode<BinaryTreeTraversalN
      * 
      * 动画效果：当前节点所在子树全部变为未访问
      */
-    public _clear_visited() {
+    public _clear_visited(): void {
         BinaryTreeTraversalNode.clearVisited(this);
     }
 
@@ -23,7 +23,7 @@ export class BinaryTreeTraversalNode extends BinaryTreeNode<BinaryTreeTraversalN
      * 
      * @param visited 节点是否已被访问
      */
-    public _set_visited(visited: boolean) {
+    public _set_visited(visited: boolean): void {
         this.visited = visited;
     }
 

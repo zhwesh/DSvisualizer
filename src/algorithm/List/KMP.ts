@@ -91,12 +91,15 @@ export class KMP {
         const n = this.node.str.length, m = this.node.template.length;
 
         if (m === 0) {
+            messageController.message("模式串为空", MessageType.WARNING);
             return 0;
         }
-
-        if (n > 0) {
-            this.node._align(0, 0);
+        if (m > n) {
+            messageController.message("模式串长度大于待匹配字符串，必然失配", MessageType.WARNING);
+            return null;
         }
+
+        this.node._align(0, 0);
 
         let i = 0, j = 0;
         this.node._set_str_ptr(0);

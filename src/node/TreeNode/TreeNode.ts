@@ -1,6 +1,8 @@
 import { DataNode } from "../DataNode";
 
-// 树节点
+/**
+ * 树节点
+ */
 export class TreeNode<T extends TreeNode<T>> extends DataNode {
     /**
      * 给当前节点添加一个孩子
@@ -11,15 +13,6 @@ export class TreeNode<T extends TreeNode<T>> extends DataNode {
      */
     public _add_son(son: T | null): void {
         this.sons.push(son);
-    }
-
-    /**
-     * 删除当前节点
-     * 
-     * 动画效果：当前节点及其子树消失
-     */
-    public _delete(): void {
-        this.sons = Array(0);
     }
 
     /************************************************** */

@@ -1,5 +1,8 @@
 import { DataNode } from "../DataNode";
 
+/**
+ * 链表节点
+ */
 export class LinkedNode<T extends LinkedNode<T>> extends DataNode {
     /**
      * 设置当前节点的值

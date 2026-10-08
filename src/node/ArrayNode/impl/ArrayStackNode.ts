@@ -6,6 +6,9 @@ import { ArrayNode } from "../ArrayNode";
 export class ArrayStackNode extends ArrayNode {
     /**
      * 设置栈顶指针
+     * 
+     * 动画效果：栈顶指针指向data[top]
+     * 
      * @param top 栈顶指针索引
      */
     public _set_top(top: number | null): void {

@@ -48,7 +48,7 @@ export class StepController {
      * 设置时间间隔（由图形界面层调用）
      * @param timeInterval 时间间隔
      */
-    public setTimeInterval(timeInterval: number) {
+    public setTimeInterval(timeInterval: number): void {
         this.timeInterval = timeInterval;
     }
 
@@ -56,20 +56,31 @@ export class StepController {
      * 设置状态（由图形界面层调用）
      * @param status 新状态
      */
-    public setStatus(status: number) {
-        // 若状态变为1或2，且当前算法层代码正在等待wait()，则立刻唤醒
-        if ((status === 1 || status === 2) && this.resolveWait) {
-            const resolve = this.resolveWait;
-            this.resolveWait = null;            // 清空resolveWait防止重复resolve
-            this.status = status === StepStatus.STEP_EXECUTION ?
-                StepStatus.PAUSE_OR_FREE : StepStatus.PLAYING;
-            resolve();
+    public setStatus(status: number): void {
+        if (status === StepStatus.STEP_EXECUTION) {
+            // 单步执行：只唤醒最早等待的复合操作，令其执行一个原子操作
+            if (this.waitQueue.length > 0) {
+                this.status = StepStatus.PAUSE_OR_FREE;
+                const resolve = this.waitQueue.shift()!;
+                resolve();
+            } else {
+                this.status = status;
+            }
+        } else if (status === StepStatus.PLAYING) {
+            // 播放：唤醒所有等待中的复合操作，之后由wait()内的定时器控制节奏
+            this.status = status;
+            const queue = this.waitQueue;
+            this.waitQueue = [];
+            for (const resolve of queue) {
+                resolve();
+            }
         } else {
             this.status = status;
         }
     }
 
-    private resolveWait: (() => void) | null = null;
+    // 等待被唤醒的wait()回调队列（FIFO，避免并发wait相互覆盖）
+    private waitQueue: (() => void)[] = [];
 
     /**
      * 提供给算法层的复合操作
@@ -91,15 +102,15 @@ export class StepController {
                             this.status = StepStatus.PAUSE_OR_FREE;
                             resolve();
                         } else {
-                            this.resolveWait = resolve;
+                            this.waitQueue.push(resolve);
                         }
                     },
                     this.timeInterval * 1000
                 );
             });
-        } else {                        // 暂停状态：直接挂起，等待用户操作唤醒
+        } else {                                            // 暂停状态：直接挂起，等待用户操作唤醒
             return new Promise<void>((resolve) => {
-                this.resolveWait = resolve;
+                this.waitQueue.push(resolve);
             });
         }
     }

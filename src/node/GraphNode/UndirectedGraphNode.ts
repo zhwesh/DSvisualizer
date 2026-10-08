@@ -18,12 +18,12 @@ export class UndirectedGraphNode extends DataNode {
 
             const [u, v] = edge;
             if (u === v) {
-                throw new Error("有向图不允许自环");
+                throw new Error("无向图不允许自环");
             }
 
             const key = isDirected ? u + "," + v : Math.min(u!, v!) + "," + Math.max(u!, v!);
             if (used.has(key)) {
-                throw new Error("有向图不允许重边");
+                throw new Error("无向图不允许重边");
             }
             used.add(key);
         }

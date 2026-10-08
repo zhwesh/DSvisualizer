@@ -26,7 +26,7 @@ export class BinarySearch {
      * @param target 
      * @returns 目标元素的索引，不存在则返回-1
      */
-    public async find(target: number): Promise<number | null> {
+    public async find(target: number): Promise<number> {
         let l = 0, r = this.arr.data.length - 1, ans = -1, mid: number;
         while (l <= r) {
             await stepController.wait();

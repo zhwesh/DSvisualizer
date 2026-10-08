@@ -13,13 +13,12 @@ export class ArrayQueue {
     /**
      * 动画效果：清空队列，并设置首尾指针
      */
-    public async _clear(): Promise<void> {
+    public _clear(): void {
         messageController.message("清除所有元素", MessageType.INFO);
         for (let i = 0; i < this.arr.data.length; i++) {
             this.arr._set_value(i, null);
         }
 
-        await stepController.wait();
         messageController.message("设置首尾指针", MessageType.INFO);
         this.arr._set_head(0);
         this.arr._set_tail(0);
@@ -120,13 +119,13 @@ export class ArrayQueue {
     }
 
     // 清除所有元素
-    public async clear(): Promise<void> {
+    public clear(): void {
         if (this.arr.head! === this.arr.tail!) {
             messageController.message("队列已经为空", MessageType.WARNING);
             return;
         }
 
-        await this._clear();
+        this._clear();
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }

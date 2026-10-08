@@ -74,14 +74,14 @@ export class UnionFindSet {
     public async union(u: number, v: number): Promise<void> {
         await stepController.wait();
         messageController.message("查找节点" + u + "所在集合的根节点", MessageType.INFO);
-        const fu = await this.find(u);
+        let fu = await this.find(u);
         if (fu === null) {
             return;
         }
 
         await stepController.wait();
         messageController.message("查找节点" + v + "所在集合的根节点", MessageType.INFO);
-        const fv = await this.find(v);
+        let fv = await this.find(v);
         if (fv === null) {
             return;
         }
@@ -96,9 +96,14 @@ export class UnionFindSet {
 
         await stepController.wait();
         messageController.message(
-            "将" + fu + "的父节点设为" + fv + "，并更新集合大小",
+            "按集合大小合并：将" + fu + "的父节点设为" + fv + "，并更新集合大小",
             MessageType.INFO
         );
+        if (this.arr.sz[fu] < this.arr.sz[fv]) {
+            const tmp = fu;
+            fu = fv;
+            fv = tmp;
+        }
         this.arr._set_value(fu, fv);
         this.arr._set_size(fv, this.arr.sz[fv]! + this.arr.sz[fu]!);
 

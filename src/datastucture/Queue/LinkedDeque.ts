@@ -21,7 +21,7 @@ export class LinkedDeque {
     /**
      * 动画效果：清空队列（令哨兵节点前后指针指向自己）
      */
-    public async _clear(): Promise<void> {
+    public _clear(): void {
         this.header._set_next(this.header);
         this.header._set_last(this.header);
         this.sz = 0;
@@ -174,13 +174,13 @@ export class LinkedDeque {
     }
 
     // 清除所有元素
-    public async clear(): Promise<void> {
+    public clear(): void {
         if (this.isEmpty()) {
             messageController.message("队列已经为空", MessageType.WARNING);
             return;
         }
 
-        await this._clear();
+        this._clear();
 
         messageController.message(SuccessMessage.CLEAR_SUCCESS, MessageType.SUCCESS);
     }
