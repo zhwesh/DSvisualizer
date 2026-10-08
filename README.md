@@ -46,6 +46,18 @@ npm run preview
 ```
 编译产物输出至`dist/`，`npm run preview` 会以静态服务器方式在本地预览；也可将`dist/`部署到任意静态服务器
 
+## 运行测试
+项目自带数据结构与算法的测试，无需安装测试框架：
+
+- 双击`src/test/运行测试.bat`即可运行（自动编译并执行，结束后窗口不会立即关闭；存在未通过的测试时退出码非0）
+- 也可在项目根目录手动执行：
+```
+node node_modules/typescript/bin/tsc src/test/RunTests.ts --outDir node_modules/.tmp/dstest --module commonjs --target es2022 --skipLibCheck --ignoreConfig
+node node_modules/.tmp/dstest/test/RunTests.js
+```
+
+测试文件位于`src/test/`，目录结构与`src/datastucture`、`src/algorithm`一致，文件名为对应源文件加`Test`（如`SinglyLinkedListTest.ts`）。测试内容以边界用例和与标准/参考实现的随机对拍为主，运行后会输出每个测试的通过情况、数据量与统计信息。
+
 # 收录的数据结构与算法
 
 ## 数据结构
