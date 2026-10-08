@@ -1,4 +1,7 @@
-import { MinSpanningTree_BLUE, MinSpanningTree_GREEN, MinSpanningTree_NONE, MinSpanningTreeNode } from "../../node/GraphNode/impl/MinSpanningTreeNode";
+import {
+    kruskal_BLUE, kruskal_GREEN,
+    kruskal_NONE, kruskalNode
+} from "../../node/GraphNode/impl/kruskalNode";
 import { MessageController, MessageType } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
 import { create } from "../../node/factory";
@@ -9,12 +12,12 @@ let stepController = StepController.getStepController();
 /**
  * 最小生成树（kruskal算法）
  */
-export class MinSpanningTree {
-    private graph: MinSpanningTreeNode;
+export class kruskal {
+    private graph: kruskalNode;
     private father: number[];
 
     constructor(edges: number[][]) {
-        this.graph = create(MinSpanningTreeNode, edges);
+        this.graph = create(kruskalNode, edges);
         this.father = new Array(this.graph.nodeCnt);
         for (let i = 0; i < this.graph.nodeCnt; ++i) {
             this.father[i] = i;
@@ -34,6 +37,11 @@ export class MinSpanningTree {
      * 执行算法
      */
     public async execute(): Promise<void> {
+        if (this.graph.nodeCnt === 0) {
+            messageController.message("此图为空", MessageType.WARNING);
+            return;
+        }
+
         await stepController.wait();
         messageController.message("将边集按w排序", MessageType.INFO);
         this.graph._sort_edges();
@@ -41,7 +49,7 @@ export class MinSpanningTree {
         await stepController.wait();
         let selectedCnt = 0;    // 已经选中的边数量
         for (let [u, v] of this.graph.edges) {
-            this.graph._set_edge_color(u, v, MinSpanningTree_BLUE);
+            this.graph._set_edge_color(u, v, kruskal_BLUE);
             messageController.message(
                 "尝试将边(" + u + "," + v + ")加入答案",
                 MessageType.INFO
@@ -55,14 +63,14 @@ export class MinSpanningTree {
                     MessageType.INFO
                 );
                 this.father[fu] = fv;
-                this.graph._set_edge_color(u, v, MinSpanningTree_GREEN);
+                this.graph._set_edge_color(u, v, kruskal_GREEN);
                 ++selectedCnt;
             } else {
                 messageController.message(
                     "节点" + u + "与" + v + "已经连通，跳过该边",
                     MessageType.INFO
                 );
-                this.graph._set_edge_color(u, v, MinSpanningTree_NONE);
+                this.graph._set_edge_color(u, v, kruskal_NONE);
             }
 
             if (selectedCnt === this.graph.nodeCnt - 1) {

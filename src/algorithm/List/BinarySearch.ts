@@ -11,25 +11,13 @@ let stepController = StepController.getStepController();
  */
 export class BinarySearch {
     private arr: BinarySearchNode;
-
-    private isAscend(data: number[]): boolean {
-        for (let i: number = 1; i < data.length; ++i) {
-            if (data[i] < data[i - 1]) {
-                return false;
-            }
-        }
-        return true;
-    }
-
+    
     /**
      * 初始数组
      * data必须按非降序排序，否则抛出异常
      * @param data 
      */
     constructor(data: number[]) {
-        if (!this.isAscend(data)) {
-            throw new Error("data数组必须按升序排序");
-        }
         this.arr = create(BinarySearchNode, data);
     }
 

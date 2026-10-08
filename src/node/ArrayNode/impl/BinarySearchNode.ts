@@ -39,11 +39,20 @@ export class BinarySearchNode extends ArrayNode {
 
     /************************************************** */
 
+    private static ascendAssert(data: number[]): void {
+        for (let i: number = 1; i < data.length; ++i) {
+            if (data[i] < data[i - 1]) {
+                throw new Error("data数组必须按升序排序");
+            }
+        }
+    }
+
     public left: number | null; 
     public right: number | null;
     public mid: number | null;
 
     constructor(data: number[]) {
+        BinarySearchNode.ascendAssert(data);
         super(data);
         this.left = this.right = this.mid = null;
     }

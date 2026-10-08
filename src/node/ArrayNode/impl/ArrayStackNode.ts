@@ -12,6 +12,8 @@ export class ArrayStackNode extends ArrayNode {
         this.top = top;
     }
 
+    /************************************************** */
+
     // 栈顶指针（当值为null时不显示）
     public top: number | null;
 
@@ -19,6 +21,4 @@ export class ArrayStackNode extends ArrayNode {
         super(data);
         this.top = null;
     }
-
-    /************************************************** */
 }
