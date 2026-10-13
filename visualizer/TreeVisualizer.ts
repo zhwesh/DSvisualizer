@@ -107,10 +107,18 @@ export class TreeVisualizer extends BaseVisualizer {
                 this.ds = node;
                 // 依据根节点形态判断渲染模式
                 this.mode = (node.root && node.root.pass !== undefined) ? 'trie' : 'binary';
-                this.render();
+                if (this.mode === 'trie') {
+                    this.renderTrie();
+                } else {
+                    this.render();
+                }
                 break;
             case '_clear':
-                this.render();
+                if (this.mode === 'trie') {
+                    this.renderTrie();
+                } else {
+                    this.render();
+                }
                 break;
             default:
                 break;

@@ -6,6 +6,9 @@ import { ArrayVisualizer } from './ArrayVisualizer';
 import { LinkedListVisualizer } from './LinkedListVisualizer';
 import { TreeVisualizer } from './TreeVisualizer';
 import { BinarySearchVisualizer } from './BinarySearchVisualizer';
+import { GraphVisualizer } from './GraphVisualizer';
+import { SortVisualizer } from './SortVisualizer';
+import { KMPVisualizer } from './KMPVisualizer';
 
 /**
  * 可视化器类型（值即类型，兼容 erasableSyntaxOnly）
@@ -22,6 +25,20 @@ export const VisualizerType = {
     RED_BLACK: 'red_black',
     BINARY_SEARCH: 'binary_search',
     BINARY_TREE_TRAVERSAL: 'binary_tree_traversal',
+    SEGMENT_TREE: 'segment_tree',
+    ARRAY_QUEUE: 'array_queue',
+    ARRAY_DEQUE: 'array_deque',
+    ARRAY_STACK: 'array_stack',
+    TRIE: 'trie',
+    DIJKSTRA: 'dijkstra',
+    FLOYD: 'floyd',
+    PRIM: 'prim',
+    KRUSKAL: 'kruskal',
+    BUBBLE_SORT: 'bubble_sort',
+    INSERTION_SORT: 'insertion_sort',
+    MERGE_SORT: 'merge_sort',
+    QUICK_SORT: 'quick_sort',
+    KMP: 'kmp',
 } as const;
 
 export type VisualizerType = typeof VisualizerType[keyof typeof VisualizerType];
@@ -100,6 +117,30 @@ export class VisualizerManager {
                 break;
             case VisualizerType.BINARY_SEARCH:
                 this.currentVisualizer = new BinarySearchVisualizer(this.svg);
+                break;
+            case VisualizerType.ARRAY_QUEUE:
+            case VisualizerType.ARRAY_DEQUE:
+            case VisualizerType.ARRAY_STACK:
+                this.currentVisualizer = new ArrayVisualizer(this.svg);
+                break;
+            case VisualizerType.SEGMENT_TREE:
+            case VisualizerType.TRIE:
+                this.currentVisualizer = new TreeVisualizer(this.svg);
+                break;
+            case VisualizerType.DIJKSTRA:
+            case VisualizerType.FLOYD:
+            case VisualizerType.PRIM:
+            case VisualizerType.KRUSKAL:
+                this.currentVisualizer = new GraphVisualizer(this.svg);
+                break;
+            case VisualizerType.BUBBLE_SORT:
+            case VisualizerType.INSERTION_SORT:
+            case VisualizerType.MERGE_SORT:
+            case VisualizerType.QUICK_SORT:
+                this.currentVisualizer = new SortVisualizer(this.svg);
+                break;
+            case VisualizerType.KMP:
+                this.currentVisualizer = new KMPVisualizer(this.svg);
                 break;
             default:
                 console.warn('Unknown visualizer type:', type);
