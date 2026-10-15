@@ -397,7 +397,9 @@ export class RedBlackTree {
             if (x.left === null) {
                 return [x, false, false];
             }
+            x._set_visited(true);
             await stepController.wait();
+            x._set_visited(false);
             messageController.message(
                 val + " < " + x.val + "，向左查找",
                 MessageType.INFO
@@ -418,7 +420,9 @@ export class RedBlackTree {
             if (x.right === null) {
                 return [x, false, false];
             }
+            x._set_visited(true);
             await stepController.wait();
+            x._set_visited(false);
             messageController.message(
                 val + " > " + x.val + "，向右查找",
                 MessageType.INFO
@@ -436,6 +440,8 @@ export class RedBlackTree {
             }
             return [x, true, false];
         } else {
+            // 命中：高亮待删除节点，直至删除完成
+            x._set_visited(true);
             if (x.left !== null && x.right !== null) {
                 await stepController.wait();
                 messageController.message(
@@ -460,8 +466,10 @@ export class RedBlackTree {
                 }
                 if (deficit) {
                     const [newRoot, d] = await this.fixDeficit(x, false);
+                    x._set_visited(false);      // 展示后恢复原色
                     return [newRoot, true, d];
                 }
+                x._set_visited(false);          // 展示后恢复原色
                 return [x, true, false];
             }
 
@@ -476,6 +484,7 @@ export class RedBlackTree {
             messageController.message("删除节点", MessageType.INFO);
             const black = this.getColor(x) === RedBlackTree_Black;
             x._delete();
+            x._set_visited(false);      // 展示后恢复原色
             return [child, true, black];
         }
     }
@@ -520,13 +529,17 @@ export class RedBlackTree {
         messageController.message("从根节点开始查找 " + val, MessageType.INFO);
         while (x !== null) {
             if (x.val === val) {
+                x._set_visited(true);
                 await stepController.wait();
+                x._set_visited(false);
                 messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
                 return true;
             }
             const toLeft = val < x.val!;
 
+            x._set_visited(true);
             await stepController.wait();
+            x._set_visited(false);
             if (toLeft) {
                 messageController.message(
                     val + " < " + x.val + "，向左查找",

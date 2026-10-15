@@ -70,12 +70,16 @@ export class BinarySearchTree {
         messageController.message("从根节点开始查找 " + val, MessageType.INFO);
         while (x !== null) {
             if (x.val === val) {
+                x._set_visited(true);
                 await stepController.wait();
+                x._set_visited(false);
                 messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
                 return true;
             }
             const toLeft = val < x.val!;
+            x._set_visited(true);
             await stepController.wait();
+            x._set_visited(false);
             if (toLeft) {
                 messageController.message(
                     val + " < " + x.val + "，向左查找",
@@ -167,7 +171,9 @@ export class BinarySearchTree {
         let f: BinarySearchTreeNode<any> | null = null;
         while (x !== null && x.val !== val) {
             const toLeft = val < x.val!;
+            x._set_visited(true);
             await stepController.wait();
+            x._set_visited(false);
             if (toLeft) {
                 messageController.message(
                     val + " < " + x.val + "，向左查找",
@@ -187,6 +193,9 @@ export class BinarySearchTree {
             return;
         }
 
+        // 命中：高亮待删除节点，直至删除完成
+        x._set_visited(true);
+        const target = x;
         if (x.left !== null && x.right !== null) {
             await stepController.wait();
             messageController.message(
@@ -222,6 +231,7 @@ export class BinarySearchTree {
         await stepController.wait();
         messageController.message("删除节点", MessageType.INFO);
         x._delete();
+        target._set_visited(false);     // 展示后恢复原色
         --this.sz;
 
         messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);

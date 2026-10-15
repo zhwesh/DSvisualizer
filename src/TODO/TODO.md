@@ -12,6 +12,10 @@
   - 用户点击“暂停”，停止执行
   - 用户点击“播放”，开始以PLAY_TIME_INTERVAL秒一个原子操作的速度执行
   - 用户点击“快进”，开始以FAST_TIME_INTERVAL秒一个原子操作的速度执行
+- 中断处理（硬性规定）：本设计**不支持取消操作**，任何中断行为或不正常行为（切换菜单、重置数据、切换算法等）都强制播完动画、把当前复合操作执行完毕，再进行切换：
+  - 强制播完的方式：页面层将状态置为`PLAYING`并把时间间隔设为`FAST_TIME_INTERVAL`（相当于自动快进），等待当前复合操作结束后再执行切换；
+  - 因此`wait()`只可能被唤醒，不会失败，算法层不需要处理“操作被取消/中止”之类的异常；
+  - 页面层在发起新的复合操作或切换视图前，必须确保上一个复合操作已经结束（应自行持有该操作的Promise并`await`）。
 
 # 三、可视化层/图形页面层工作任务
 ### 1. 图形页面层
@@ -22,7 +26,7 @@
   - 消息展示区：显示算法执行过程中的提示信息（来自 MessageController）。
   - 画布区域：放置SVG容器，供D3渲染。
 - 控件交互逻辑：
-  - 点击边栏切换数据结构与算法
+  - 点击边栏切换数据结构与算法：若当前存在未完成的复合操作，必须按“中断处理”先强制快进播完，再调用`DataNode.restart()`、切换visualizer、创建新数据结构实例
   - 点击增删改查按钮时调用可视化层暴露的接口
   - 点击流程控制按钮时调用StepController的`setStatus`方法设置状态（具体逻辑见StepController注释）。
 
@@ -48,6 +52,7 @@
    - `getStepController()`：获取单例。
    - `setStatus(number)`：改变流程控制状态（取值见`StepStatus`）。
    - `setTimeInterval(number)`：改变“播放”状态下原子操作的时间间隔（单位为秒，可传入导出的`PLAY_TIME_INTERVAL`/`FAST_TIME_INTERVAL`）
+   - 说明：`StepController`不提供取消/中止接口，`wait()`只会被唤醒（resolve），不会失败；中断处理方式见“名词/功能介绍”
 3. **MessageController接口**：  
    - `getMessageController()`：获取单例。
    - `setMessageHandler((msg: string, type: number) => void)`：注册消息处理函数。

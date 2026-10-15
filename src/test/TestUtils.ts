@@ -709,6 +709,80 @@ export async function checkBSTModel(tree: TestableBST, name: string): Promise<st
 }
 
 /**
+ * 二叉搜索树查找高亮测试：查找路径节点依次高亮并恢复，命中节点最后高亮；删除命中节点时保持高亮直至删除完成
+ * @param tree 待测试的二叉搜索树（应为空树）
+ * @param name 名称（用于提示信息）
+ * @returns 数据量描述
+ */
+export async function checkSearchHighlight(tree: TestableBST, name: string): Promise<string> {
+    const values = [50, 30, 70, 20, 40, 60, 80, 10, 45];
+    for (const val of values) {
+        await tree.insert(val);
+    }
+
+    const events: { val: number | null; visited: boolean }[] = [];
+    registerOpHook((target: object, method: string, args: any[]) => {
+        if (method === "_set_visited") {
+            events.push({ val: (target as { val: number | null }).val, visited: args[0] as boolean });
+        }
+    });
+
+    // 命中/未命中查找：高亮成对出现，路径逐步向左/向右，无残留高亮
+    let hitCount = 0, missCount = 0, nodeCount = 0;
+    for (const val of [50, 45, 10, 55, 5]) {
+        events.length = 0;
+        const found = await tree.contains(val);
+        assert(events.length % 2 === 0, name + "：查找高亮应成对出现");
+        const path: number[] = [];
+        for (let i = 0; i < events.length; i += 2) {
+            assert(events[i].visited && !events[i + 1].visited && events[i].val === events[i + 1].val,
+                name + "：查找高亮的节点应先高亮后恢复");
+            path.push(events[i].val!);
+        }
+        assert(path.length > 0, name + "：非空查找应至少高亮一个节点");
+        for (let i = 1; i < path.length; ++i) {
+            if (val < path[i - 1]) {
+                assert(path[i] < path[i - 1], name + "：查找路径应逐步向左");
+            } else {
+                assert(path[i] > path[i - 1], name + "：查找路径应逐步向右");
+            }
+        }
+        if (found) {
+            assert(path[path.length - 1] === val, name + "：命中节点应最后高亮");
+            ++hitCount;
+        } else {
+            assert(!path.includes(val), name + "：未命中不应高亮目标值");
+            ++missCount;
+        }
+        nodeCount += path.length;
+    }
+
+    // 删除命中节点：查找阶段高亮路径节点，命中后保持高亮直至删除完成
+    events.length = 0;
+    await tree.delete(45);
+    let highlightCount = 0, restoreCount = 0, hitHighlighted = false;
+    for (const event of events) {
+        if (event.visited) {
+            ++highlightCount;
+            if (event.val === 45) {
+                hitHighlighted = true;
+            }
+        } else {
+            ++restoreCount;
+        }
+    }
+    assert(hitHighlighted, name + "：删除时应高亮待删除节点");
+    assert(highlightCount === restoreCount, name + "：删除完成后不应残留高亮");
+    assert(!await tree.contains(45), name + "：删除后节点应不存在");
+
+    registerOpHook(null);
+    tree.clear();
+
+    return "查找高亮用例5项（命中" + hitCount + "、未命中" + missCount + "，共高亮" + nodeCount +
+        "个节点）；删除高亮校验1项";
+}
+
+/**
  * 可测试的替罪羊树接口
  */
 export interface TestableScapegoat extends TestableBST {

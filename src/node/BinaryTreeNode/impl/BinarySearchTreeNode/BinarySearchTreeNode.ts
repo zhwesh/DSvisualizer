@@ -16,9 +16,21 @@ export class BinarySearchTreeNode<T extends BinarySearchTreeNode<T>>
         this.val = val;
     }
 
+    /**
+     * 设置节点是否在查找中高亮
+     * 
+     * 动画效果：visited为真时节点标记为绿色，否则为无色
+     * 
+     * @param visited 是否高亮
+     */
+    public _set_visited(visited: boolean): void {
+        this.visited = visited;
+    }
+
     /************************************************** */
 
     public val: number | null;
+    public visited: boolean;    // 查找高亮标记
 
     constructor(
         val: number | null,
@@ -27,5 +39,6 @@ export class BinarySearchTreeNode<T extends BinarySearchTreeNode<T>>
     ) {
         super(left, right);
         this.val = val;
+        this.visited = false;
     }
 }
