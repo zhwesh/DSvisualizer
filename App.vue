@@ -147,7 +147,7 @@ messageController.setMessageHandler((msg: string, type: number) => {
     addMessage(msg, type);
 });
 
-// ---------- 复合操作串行化（原设计：wait() 只被唤醒，不失败） ----------
+// ---------- 复合操作串行化 ----------
 let opChain: Promise<void> = Promise.resolve();
 let opBusy = false;
 
