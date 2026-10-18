@@ -3,7 +3,18 @@ import { BaseVisualizer } from './BaseVisualizer';
 import { DataNode } from '../node/DataNode';
 import { DirectedGraphNode } from '../node/GraphNode/DirectedGraphNode';
 import { UndirectedGraphNode } from '../node/GraphNode/UndirectedGraphNode';
-import { dijkstraNode } from '../node/GraphNode/impl/dijkstraNode';
+import { dijkstraNode } from '../node/GraphNode/impl/DijkstraNode';
+import { floydNode } from '../node/GraphNode/impl/FloydNode';
+import { kruskalNode } from '../node/GraphNode/impl/KruskalNode';
+import { primNode } from '../node/GraphNode/impl/PrimNode';
+
+// 图算法节点联合类型（全部继承 Directed/UndirectedGraphNode）
+// 各子类的染色字段不完全相同（floyd无edgeColor、kruskal/prim无nodeColor），按渲染视图声明为可选
+interface GraphColorView {
+    edgeColor?: Map<number, number>[];
+    nodeColor?: number[];
+}
+type GraphNodeInstance = (dijkstraNode | floydNode | kruskalNode | primNode) & GraphColorView;
 
 // ---------- 颜色常量（与各算法节点的颜色枚举对齐） ----------
 const COLOR_NONE = '#ffffff';    // 未处理
@@ -23,7 +34,7 @@ const EDGE_BLUE = '#3498db';
  */
 export class GraphVisualizer extends BaseVisualizer {
     // 当前绑定的图节点实例（dijkstraNode/floydNode/kruskalNode/primNode）
-    private ds: any = null;
+    private ds: GraphNodeInstance | null = null;
     // 节点位置（环形布局）
     private pos: { x: number; y: number }[] = [];
 
@@ -86,7 +97,7 @@ export class GraphVisualizer extends BaseVisualizer {
     onOp(node: DataNode, method: string, args: any[]): void {
         if (method === '_create') {
             if (node instanceof DirectedGraphNode || node instanceof UndirectedGraphNode) {
-                this.ds = node;
+                this.ds = node as unknown as GraphNodeInstance;
             }
             this.render();
             return;
@@ -172,6 +183,8 @@ export class GraphVisualizer extends BaseVisualizer {
      */
     private renderEdges(): void {
         this.mainGroup.selectAll('.graph-edge').remove();
+        const ds = this.ds;
+        if (!ds) return;
         const edges = this.collectEdges();
         const R = GraphVisualizer.NODE_R;
         edges.forEach(e => {
@@ -185,8 +198,8 @@ export class GraphVisualizer extends BaseVisualizer {
             const x2 = p2.x - (dx / len) * R;
             const y2 = p2.y - (dy / len) * R;
 
-            const directed = !(this.ds instanceof UndirectedGraphNode);
-            const color = this.edgeStroke(this.ds.edgeColor?.[e.u]?.get(e.v));
+            const directed = !(ds instanceof UndirectedGraphNode);
+            const color = this.edgeStroke(ds.edgeColor?.[e.u]?.get(e.v));
             const g = this.mainGroup.append('g').attr('class', 'graph-edge');
             g.append('line')
                 .attr('class', 'edge-line')
@@ -217,7 +230,9 @@ export class GraphVisualizer extends BaseVisualizer {
      */
     private renderNodes(): void {
         this.mainGroup.selectAll('.graph-node').remove();
-        const n = this.ds.nodeCnt;
+        const ds = this.ds;
+        if (!ds) return;
+        const n = ds.nodeCnt;
         for (let i = 0; i < n; ++i) {
             const p = this.pos[i];
             const g = this.mainGroup.append('g')
@@ -227,7 +242,7 @@ export class GraphVisualizer extends BaseVisualizer {
             g.append('circle')
                 .attr('class', 'node-circle')
                 .attr('r', GraphVisualizer.NODE_R)
-                .attr('fill', this.nodeFill(this.ds.nodeColor?.[i]))
+                .attr('fill', this.nodeFill(ds.nodeColor?.[i]))
                 .attr('stroke', '#555')
                 .attr('stroke-width', 2);
             g.append('text')
@@ -240,7 +255,7 @@ export class GraphVisualizer extends BaseVisualizer {
                 .style('fill', COLOR_TEXT)
                 .text(String(i));
             // dijkstra：节点下方显示最短距离
-            if (this.isDijkstra && Array.isArray(this.ds.dis)) {
+            if (ds instanceof dijkstraNode) {
                 g.append('text')
                     .attr('class', 'node-dis')
                     .attr('text-anchor', 'middle')
@@ -248,8 +263,8 @@ export class GraphVisualizer extends BaseVisualizer {
                     .style('font-size', '12px')
                     .style('font-family', 'monospace')
                     .style('fill', '#7f8c8d')
-                    .text(this.ds.dis[i] === Infinity || this.ds.dis[i] === undefined
-                        ? '∞' : String(this.ds.dis[i]));
+                    .text(ds.dis[i] === Infinity || ds.dis[i] === undefined
+                        ? '∞' : String(ds.dis[i]));
             }
         }
     }
@@ -258,7 +273,7 @@ export class GraphVisualizer extends BaseVisualizer {
      * 更新 dijkstra 距离标签
      */
     private updateDis(): void {
-        if (!this.ds || !this.isDijkstra) return;
+        if (!(this.ds instanceof dijkstraNode)) return;
         for (let i = 0; i < this.ds.nodeCnt; ++i) {
             const g = this.mainGroup.select(`.graph-node[data-node="${i}"]`);
             if (g.empty()) continue;
@@ -272,7 +287,8 @@ export class GraphVisualizer extends BaseVisualizer {
      * 节点颜色过渡
      */
     private animateNode(i: number): void {
-        if (!this.ds) return;
+        const ds = this.ds;
+        if (!ds) return;
         this.renderNodes();   // 结构简单，直接重绘保持一致性
         this.fitViewBox();
         const g = this.mainGroup.select(`.graph-node[data-node="${i}"]`);
@@ -280,22 +296,23 @@ export class GraphVisualizer extends BaseVisualizer {
         g.select('circle')
             .transition()
             .duration(180)
-            .attr('fill', this.nodeFill(this.ds.nodeColor?.[i]));
+            .attr('fill', this.nodeFill(ds.nodeColor?.[i]));
     }
 
     /**
      * 边颜色过渡
      */
     private animateEdge(u: number, v: number): void {
-        if (!this.ds) return;
-        const key = this.ds instanceof UndirectedGraphNode
+        const ds = this.ds;
+        if (!ds) return;
+        const key = ds instanceof UndirectedGraphNode
             ? `${Math.min(u, v)},${Math.max(u, v)}`
             : `${u},${v}`;
         const line = this.mainGroup.select(`line[data-edge="${key}"]`);
         if (!line.empty()) {
             line.transition()
                 .duration(180)
-                .attr('stroke', this.edgeStroke(this.ds.edgeColor?.[u]?.get(v)));
+                .attr('stroke', this.edgeStroke(ds.edgeColor?.[u]?.get(v)));
         }
     }
 

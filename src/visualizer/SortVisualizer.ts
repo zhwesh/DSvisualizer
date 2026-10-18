@@ -3,6 +3,12 @@ import { BaseVisualizer } from './BaseVisualizer';
 import { DataNode } from '../node/DataNode';
 import { ArrayNode } from '../node/ArrayNode/ArrayNode';
 import { QuickSortNode } from '../node/ArrayNode/impl/QuickSortNode';
+import { BubbleSortNode } from '../node/ArrayNode/impl/BubbleSortNode';
+import { InsertionSortNode } from '../node/ArrayNode/impl/InsertionSortNode';
+import { MergeSortNode } from '../node/ArrayNode/impl/MergeSortNode';
+
+// 排序算法节点联合类型（均有 color 染色数组）
+type SortArrayNode = QuickSortNode | BubbleSortNode | InsertionSortNode | MergeSortNode;
 
 const COLOR_ITEM = '#ffffff';
 const COLOR_ACTIVE = '#2ecc71';
@@ -18,7 +24,7 @@ const COLOR_PIVOT = '#e74c3c';
  * - _swap_value / _set_value 触发数值文本过渡动画
  */
 export class SortVisualizer extends BaseVisualizer {
-    private ds: any = null;
+    private ds: ArrayNode | null = null;
     private previewData: (number | null)[] | null = null;   // 未执行时的预览数据
 
     private static readonly CANVAS_W = 1200;
@@ -38,10 +44,15 @@ export class SortVisualizer extends BaseVisualizer {
     }
 
     /**
-     * 当前是否有枢轴（快速排序）
+     * 当前绑定节点是否为排序节点（含 color 数组）
      */
-    private get hasPivot(): boolean {
-        return this.ds instanceof QuickSortNode && this.ds.pivot !== null && this.ds.pivot !== undefined;
+    private get sortNode(): SortArrayNode | null {
+        const ds = this.ds;
+        if (ds instanceof QuickSortNode || ds instanceof BubbleSortNode ||
+            ds instanceof InsertionSortNode || ds instanceof MergeSortNode) {
+            return ds;
+        }
+        return null;
     }
 
     onOp(node: DataNode, method: string, args: any[]): void {
@@ -98,8 +109,9 @@ export class SortVisualizer extends BaseVisualizer {
 
         for (let i = 0; i < n; ++i) {
             const v = data[i];
-            const isActive = (this.ds?.color?.[i] ?? false) === true;
-            const isPivot = this.hasPivot && this.ds.pivot === i;
+            const sortDs = this.sortNode;
+            const isActive = (sortDs?.color?.[i] ?? false) === true;
+            const isPivot = this.ds instanceof QuickSortNode && this.ds.pivot === i;
             const g = this.mainGroup.append('g')
                 .attr('class', 'sort-item')
                 .attr('data-idx', i);
@@ -147,12 +159,13 @@ export class SortVisualizer extends BaseVisualizer {
      * 单方框颜色过渡
      */
     private animateColor(i: number): void {
-        if (!this.ds) return;
+        const sortDs = this.sortNode;
+        if (!sortDs) return;
         const bar = this.mainGroup.select(`rect.sort-bar[data-idx="${i}"]`);
         if (!bar.empty()) {
             bar.transition()
                 .duration(160)
-                .attr('fill', this.ds.color?.[i] ? COLOR_ACTIVE : COLOR_ITEM);
+                .attr('fill', sortDs.color?.[i] ? COLOR_ACTIVE : COLOR_ITEM);
         }
     }
 
@@ -190,8 +203,9 @@ export class SortVisualizer extends BaseVisualizer {
         }
         for (let i = 0; i < n; ++i) {
             const v = data[i];
-            const isActive = (this.ds?.color?.[i] ?? false) === true;
-            const isPivot = this.hasPivot && this.ds.pivot === i;
+            const sortDs = this.sortNode;
+            const isActive = (sortDs?.color?.[i] ?? false) === true;
+            const isPivot = this.ds instanceof QuickSortNode && this.ds.pivot === i;
             const bar = this.mainGroup.select(`rect.sort-bar[data-idx="${i}"]`);
             const val = this.mainGroup.select(`text.sort-val[data-idx="${i}"]`);
             if (!bar.empty()) {

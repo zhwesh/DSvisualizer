@@ -53,6 +53,7 @@ export class VisualizerManager {
     private svg: d3.Selection<SVGSVGElement, unknown, null, undefined> | null = null;
     private currentVisualizer: BaseVisualizer | null = null;
     private currentType: VisualizerType | null = null;
+    private binarySearchPointerListener: ((left: number, right: number, mid: number) => void) | null = null;
 
     private constructor() {}
 
@@ -77,8 +78,8 @@ export class VisualizerManager {
             .style('background', '#fafafa');
 
         // 注册全局opHook
-        setOpHook((node: DataNode, method: string, args: any[]) => {
-            this.handleOp(node, method, args);
+        setOpHook((target: object, method: string, args: any[]) => {
+            this.handleOp(target as DataNode, method, args);
         });
     }
 
@@ -96,6 +97,10 @@ export class VisualizerManager {
             this.currentVisualizer.destroy();
             this.currentVisualizer = null;
         }
+
+        // 重置视图：树/链表会按自身包围盒自适应viewBox，
+        // 若沿用上一个可视化器的viewBox，数组、图等会被裁切到画布之外
+        this.svg.attr('viewBox', '0 0 1200 600');
 
         this.currentType = type;
 
@@ -115,9 +120,12 @@ export class VisualizerManager {
             case VisualizerType.BINARY_TREE_TRAVERSAL:
                 this.currentVisualizer = new TreeVisualizer(this.svg);
                 break;
-            case VisualizerType.BINARY_SEARCH:
-                this.currentVisualizer = new BinarySearchVisualizer(this.svg);
+            case VisualizerType.BINARY_SEARCH: {
+                const visualizer = new BinarySearchVisualizer(this.svg);
+                visualizer.setPointerListener(this.binarySearchPointerListener);
+                this.currentVisualizer = visualizer;
                 break;
+            }
             case VisualizerType.ARRAY_QUEUE:
             case VisualizerType.ARRAY_DEQUE:
             case VisualizerType.ARRAY_STACK:
@@ -143,7 +151,18 @@ export class VisualizerManager {
                 this.currentVisualizer = new KMPVisualizer(this.svg);
                 break;
             default:
-                console.warn('Unknown visualizer type:', type);
+                console.warn('未知的可视化类型：', type);
+        }
+    }
+
+    /**
+     * 注册二分查找指针变化监听器
+     * @param listener 监听器，传null表示清除
+     */
+    setBinarySearchPointerListener(listener: ((left: number, right: number, mid: number) => void) | null): void {
+        this.binarySearchPointerListener = listener;
+        if (this.currentVisualizer instanceof BinarySearchVisualizer) {
+            this.currentVisualizer.setPointerListener(listener);
         }
     }
 

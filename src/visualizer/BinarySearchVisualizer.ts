@@ -19,8 +19,29 @@ export class BinarySearchVisualizer extends BaseVisualizer {
     public currentRight: number | null = null;
     public currentMid: number | null = null;
 
+    // 指针变化回调，避免页面层轮询
+    private pointerListener: ((left: number, right: number, mid: number) => void) | null = null;
+
+    /**
+     * 注册或清除指针变化监听器
+     * @param listener 监听器，传null表示清除
+     */
+    public setPointerListener(listener: ((left: number, right: number, mid: number) => void) | null): void {
+        this.pointerListener = listener;
+        this.notifyPointers();
+    }
+
+    private notifyPointers(): void {
+        if (this.pointerListener !== null &&
+            this.currentLeft !== null && this.currentRight !== null && this.currentMid !== null) {
+            this.pointerListener(this.currentLeft, this.currentRight, this.currentMid);
+        }
+    }
+
     private static readonly CELL_WIDTH = 40;
     private static readonly CELL_HEIGHT = 40;
+    // 数组左右至少留出的边距（保证整行不贴边、不超出画布边界）
+    private static readonly MARGIN = 60;
     private static readonly START_Y = 255;
     private static readonly CANVAS_W = 1200;
 
@@ -59,9 +80,17 @@ export class BinarySearchVisualizer extends BaseVisualizer {
         this.currentLeft = node.left;
         this.currentRight = node.right;
         this.currentMid = node.mid;
+        this.notifyPointers();
 
-        const cellW = BinarySearchVisualizer.CELL_WIDTH;
         const cellH = BinarySearchVisualizer.CELL_HEIGHT;
+
+        // 数组较长时按可用宽度收缩单元格：保证整行（含左右边距）不超出画布边界
+        const maxRowW = BinarySearchVisualizer.CANVAS_W - BinarySearchVisualizer.MARGIN * 2;
+        const cellW = data.length > 0
+            ? Math.min(BinarySearchVisualizer.CELL_WIDTH, maxRowW / data.length)
+            : BinarySearchVisualizer.CELL_WIDTH;
+        // 字号跟随格子宽度缩放，避免收缩后数字相互重叠
+        const fontSize = Math.max(9, Math.min(13, cellW * 0.5));
 
         // 数组整体以画布中心水平居中（缩小后依然保持居中）
         const totalW = data.length * cellW;
@@ -69,16 +98,15 @@ export class BinarySearchVisualizer extends BaseVisualizer {
         const startY = BinarySearchVisualizer.START_Y;
 
         // 1. 渲染数组单元格
-        const cells = g.selectAll('.bs-cell').data(data, (_d: any, i: number) => i);
+        const cells = g.selectAll<SVGGElement, number | null>('.bs-cell')
+            .data<number | null>(data, (_d: number | null, i: number) => i);
 
         const enterCells = cells.enter()
             .append('g')
-            .attr('class', 'bs-cell')
-            .attr('transform', (_d: any, i: number) => `translate(${startX + i * cellW}, ${startY})`);
+            .attr('class', 'bs-cell');
 
         enterCells.append('rect')
             .attr('class', 'bs-cell-rect')
-            .attr('width', cellW)
             .attr('height', cellH)
             .attr('fill', '#fff')
             .attr('stroke', '#666')
@@ -86,23 +114,27 @@ export class BinarySearchVisualizer extends BaseVisualizer {
 
         enterCells.append('text')
             .attr('class', 'cell-value')
-            .attr('x', cellW / 2)
-            .attr('y', cellH / 2 + 5)
             .attr('text-anchor', 'middle')
-            .style('font-size', '13px')
-            .style('font-family', 'monospace')
-            .text((d: any) => d !== null ? String(d) : '');
+            .attr('y', cellH / 2 + 5)
+            .style('font-family', 'monospace');
 
-        // 更新：范围底色 + mid 高亮
-        g.selectAll('.bs-cell').select('.bs-cell-rect')
+        // enter与update统一更新：位置、宽度、字号、范围底色与mid高亮
+        const merged = enterCells.merge(cells);
+
+        merged.attr('transform', (_d: any, i: number) => `translate(${startX + i * cellW}, ${startY})`);
+
+        merged.select('.bs-cell-rect')
+            .attr('width', cellW)
             .attr('fill', (_d: any, i: number) => {
                 const inRange = node.left !== null && node.right !== null && i >= node.left && i <= node.right;
                 if (node.mid !== null && i === node.mid) return COLOR_MID;
                 return inRange ? COLOR_RANGE : '#fff';
             });
 
-        // 更新已有单元格的值
-        g.selectAll('.bs-cell').select('.cell-value').text((d: any) => d !== null ? String(d) : '');
+        merged.select('.cell-value')
+            .attr('x', cellW / 2)
+            .style('font-size', fontSize + 'px')
+            .text((d: any) => d !== null ? String(d) : '');
 
         cells.exit().remove();
 

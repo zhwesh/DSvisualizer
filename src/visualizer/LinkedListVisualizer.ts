@@ -1,7 +1,34 @@
+import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
 import { DataNode } from '../node/DataNode';
 import { LinkedNode } from '../node/LinkedNode/LinkedNode';
 import { DoublyLinkedListNode } from '../node/LinkedNode/impl/DoublyLinkedNode';
+import { LinkedList } from '../datastructure/List/SinglyLinkedList';
+import { CircularLinkedList } from '../datastructure/List/CircularLinkedList';
+import { DoubleLinkedList } from '../datastructure/List/DoubleLinkedList';
+import { LinkedStack } from '../datastructure/Stack/LinkedStack';
+import { LinkedQueue } from '../datastructure/Queue/LinkedQueue';
+import { LinkedDeque } from '../datastructure/Queue/LinkedDeque';
+import { HashTable } from '../datastructure/HashTable/HashTable';
+
+// 链式数据结构统一只读视图（由各数据类暴露的只读 getter 提供，避免鸭子类型）
+interface DSLinkLike {
+    getHeadNode?(): unknown;
+    getHeaderNode?(): unknown;
+    getTailNode?(): unknown;
+    getArr?(): unknown;
+}
+
+interface LayoutItem {
+    node: LinkedNode<any>;
+    x: number;
+    y: number;
+    isSentinel: boolean;
+    bucket?: number;
+}
+
+// 高亮/闪烁颜色（查找、修改动画）
+const COLOR_FLASH = '#f39c12';
 
 /**
  * 链表可视化器
@@ -14,7 +41,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
     // 已渲染过的节点集合（用于退出动画判断）
     private nodes: Map<number, LinkedNode<any>> = new Map();
     // 当前绑定的数据结构实例（LinkedList / DoubleLinkedList / CircularLinkedList / LinkedStack / LinkedQueue / LinkedDeque / HashTable）
-    private ds: any = null;
+    private ds: DSLinkLike | null = null;
     // 渲染模式：linear（带头节点链表/栈）/ sentinel（带哨兵节点的循环链表/队列/双端队列）/ hashtable（哈希表链式桶）
     private mode: 'linear' | 'sentinel' | 'hashtable' = 'linear';
 
@@ -60,35 +87,36 @@ export class LinkedListVisualizer extends BaseVisualizer {
     /**
      * 处理数据结构级原子操作（绑定实例 + 重渲染）
      */
-    private handleDsOp(node: any, method: string, _args: any[]): void {
+    private handleDsOp(node: DataNode, method: string, _args: any[]): void {
+        const inst = node as unknown as DSLinkLike;
         switch (method) {
             case '_create':
                 // 数据结构实例被 create() 创建时绑定
-                this.ds = node;
+                this.ds = inst;
                 this.mode = this.detectMode(node);
                 this.render();
                 break;
             case '_set_head':
-                this.ds = node;
+                this.ds = inst;
                 this.mode = 'linear';
                 this.render();
                 break;
             case '_set_header':
-                this.ds = node;
+                this.ds = inst;
                 this.mode = 'sentinel';
                 this.render();
                 break;
             case '_set_tail':
-                this.ds = node;
+                this.ds = inst;
                 this.render();
                 break;
             case '_set_array':
-                this.ds = node;
+                this.ds = inst;
                 this.mode = 'hashtable';
                 this.render();
                 break;
             case '_set_bucket':
-                this.ds = node;
+                this.ds = inst;
                 this.mode = 'hashtable';
                 this.render();
                 break;
@@ -101,13 +129,11 @@ export class LinkedListVisualizer extends BaseVisualizer {
     }
 
     /**
-     * 根据数据结构实例的方法形态判断渲染模式
+     * 依据数据结构类型判断渲染模式（不使用鸭子类型）
      */
-    private detectMode(node: any): 'linear' | 'sentinel' | 'hashtable' {
-        if (node && typeof node === 'object' && Array.isArray(node.arr) && node.arr.length > 0) {
-            return 'hashtable';
-        }
-        if (node && typeof node === 'object' && node.header !== undefined) {
+    private detectMode(node: DataNode): 'linear' | 'sentinel' | 'hashtable' {
+        if (node instanceof HashTable) return 'hashtable';
+        if (node instanceof CircularLinkedList || node instanceof LinkedQueue || node instanceof LinkedDeque) {
             return 'sentinel';
         }
         return 'linear';
@@ -116,15 +142,15 @@ export class LinkedListVisualizer extends BaseVisualizer {
     /**
      * 收集渲染布局
      */
-    private collectLayout(): { node: LinkedNode<any>; x: number; y: number; isSentinel: boolean; bucket?: number }[] {
-        const result: { node: LinkedNode<any>; x: number; y: number; isSentinel: boolean; bucket?: number }[] = [];
+    private collectLayout(): LayoutItem[] {
+        const result: LayoutItem[] = [];
         if (!this.ds) return result;
 
         const step = LinkedListVisualizer.NODE_WIDTH + LinkedListVisualizer.NODE_GAP;
 
         if (this.mode === 'hashtable') {
-            const arr: (LinkedNode<any> | null)[] = this.ds.arr;
-            arr.forEach((headNode, idx) => {
+            const arr = this.ds.getArr?.() as (LinkedNode<any> | null)[] | undefined;
+            arr?.forEach((headNode, idx) => {
                 if (!headNode) return;
                 // 每个桶按自身长度水平居中（节点宽 + 节点间隙）
                 let len = 0;
@@ -151,10 +177,10 @@ export class LinkedListVisualizer extends BaseVisualizer {
         }
 
         // 链式结构：线性（head）或哨兵（header）
-        const header = this.ds.header as (LinkedNode<any> | undefined);
+        const header = this.ds.getHeaderNode?.() as LinkedNode<any> | undefined;
         const start: LinkedNode<any> | null = this.mode === 'sentinel'
             ? (header ? header.next : null)
-            : (this.ds.head ?? null);
+            : (this.ds.getHeadNode?.() as LinkedNode<any> | null ?? null);
 
         // 先统计节点总数，使整条链表水平居中（节点宽 + 节点间隙）
         let count = 0;
@@ -200,15 +226,14 @@ export class LinkedListVisualizer extends BaseVisualizer {
         // 1. 箭头（在节点下层）
         this.renderArrows(layout);
 
-        // 2. 节点
-        const nodeGroups = this.mainGroup.selectAll('.linked-node')
-            .data(layout, (d: any) => d.node.getId());
+        // 2. 节点（key取节点自身id，保证增删时复用同一个DOM元素）
+        const nodeGroups = this.mainGroup.selectAll<SVGGElement, LayoutItem>('.linked-node')
+            .data<LayoutItem>(layout, (d: LayoutItem) => d.node.getId());
 
         const enterGroups = nodeGroups.enter()
             .append('g')
-            .attr('class', (d: any) => d.isSentinel ? 'linked-node sentinel-node' : 'linked-node')
-            .attr('data-id', (d: any) => d.node.getId())
-            .attr('transform', (d: any) => `translate(${d.x}, ${d.y})`);
+            .attr('class', (d: LayoutItem) => d.isSentinel ? 'linked-node sentinel-node' : 'linked-node')
+            .attr('transform', (d: LayoutItem) => `translate(${d.x}, ${d.y})`);
             // 不做 opacity 淡入：避免与位置过渡同名 transition 互斥导致节点透明
 
         // 节点方框（单个矩形，同数组格子样式：方框 + 居中数字）
@@ -228,23 +253,25 @@ export class LinkedListVisualizer extends BaseVisualizer {
             .attr('text-anchor', 'middle')
             .style('font-size', '20px')
             .style('font-family', 'monospace')
-            .style('font-weight', 'bold')
-            .text((d: any) => d.isSentinel ? 'H' : (d.node.val !== null ? String(d.node.val) : ''));
+            .style('font-weight', 'bold');
 
-        // 哨兵节点虚线样式
-        enterGroups.select('.node-box').attr('stroke-dasharray', (d: any) => d.isSentinel ? '4,3' : null);
+        // 统一更新（enter与update都要更新class/id/值/哨兵虚线）
+        const merged = enterGroups.merge(nodeGroups);
 
-        // 更新：位置
-        nodeGroups.merge(enterGroups as any)
-            .transition()
+        merged
+            .attr('data-id', (d: LayoutItem) => d.node.getId())
+            .attr('class', (d: LayoutItem) => d.isSentinel ? 'linked-node sentinel-node' : 'linked-node')
+            .transition('move')
             .duration(300)
-            .attr('transform', (d: any) => `translate(${d.x}, ${d.y})`);
+            .attr('transform', (d: LayoutItem) => `translate(${d.x}, ${d.y})`);
 
-        // 更新值文本（含双向 last 显示）
-        this.mainGroup.selectAll('.linked-node').select('.node-value')
-            .text((d: any) => d.isSentinel ? 'H' : (d.node.val !== null ? String(d.node.val) : ''));
+        merged.select('.node-box')
+            .attr('stroke-dasharray', (d: LayoutItem) => d.isSentinel ? '4,3' : null);
 
-        // 退出：直接移除（不做淡出，避免 opacity 残留导致节点透明）
+        merged.select('.node-value')
+            .text((d: LayoutItem) => this.nodeText(d));
+
+        // 退出：直接移除（不做淡出，避免透明度残留导致节点透明）
         nodeGroups.exit().remove();
 
         // 3. 指针标签（top / header / tail）
@@ -255,11 +282,17 @@ export class LinkedListVisualizer extends BaseVisualizer {
     }
 
     /**
+     * 节点显示文本（哨兵显示H）
+     */
+    private nodeText(item: LayoutItem): string {
+        if (item.isSentinel) return 'H';
+        return item.node.val !== null ? String(item.node.val) : '';
+    }
+
+    /**
      * 根据当前链表的实际包围盒自适应 viewBox，使链表始终填满画布中心
      */
-    private fitViewBox(
-        layout: { node: LinkedNode<any>; x: number; y: number; isSentinel: boolean; bucket?: number }[]
-    ): void {
+    private fitViewBox(layout: LayoutItem[]): void {
         if (!layout || layout.length === 0) {
             this.svg.attr('viewBox', '0 0 1200 600');
             return;
@@ -287,14 +320,11 @@ export class LinkedListVisualizer extends BaseVisualizer {
     }
 
     /**
-     * 渲染节点之间的箭头（含双向 last 箭头与哈希表桶标签）
+     * 渲染节点之间的箭头（按节点自身的next/last指针，含循环回指与哈希表桶标签）
      */
-    private renderArrows(
-        layout: { node: LinkedNode<any>; x: number; y: number; isSentinel: boolean; bucket?: number }[]
-    ): void {
-        this.mainGroup.selectAll('.link-line').remove();
-        this.mainGroup.selectAll('.link-arrowhead').remove();
-        this.mainGroup.selectAll('.bucket-label').remove();
+    private renderArrows(layout: LayoutItem[]): void {
+        const layer = this.arrowLayer();
+        layer.selectAll('*').remove();
 
         // 箭头标记定义（复用单个 id）
         if (this.svg.select('#arrowhead').empty()) {
@@ -311,64 +341,40 @@ export class LinkedListVisualizer extends BaseVisualizer {
                 .attr('fill', '#666');
         }
 
-        for (let i = 0; i < layout.length - 1; i++) {
-            const curr = layout[i];
-            const next = layout[i + 1];
-            const yBase = curr.y;
+        const posById = new Map<number, LayoutItem>();
+        layout.forEach(item => posById.set(item.node.getId(), item));
 
-            // 同一行（桶）内才画箭头
-            if (Math.abs(curr.y - next.y) > 1) continue;
+        // 后继箭头：直接读节点自己的next指针，而不是假设渲染顺序相邻
+        layout.forEach(item => {
+            const next = item.node.next as LinkedNode<any> | null;
+            if (!next) return;
+            const target = posById.get(next.getId());
+            if (!target) return;
+            // 目标在左侧（循环链表末节点回指哨兵）或不在同一行时，用弧线绕开节点
+            const curved = target.x <= item.x || Math.abs(target.y - item.y) > 1;
+            this.drawArrow(layer, item, target, curved, '#666', 2);
+        });
 
-            const x1 = curr.x + LinkedListVisualizer.NODE_WIDTH;
-            const y1 = yBase + LinkedListVisualizer.NODE_HEIGHT / 2;
-            const x2 = next.x;
-            const y2 = next.y + LinkedListVisualizer.NODE_HEIGHT / 2;
-
-            this.mainGroup.append('line')
-                .attr('class', 'link-line')
-                .attr('x1', x1)
-                .attr('y1', y1)
-                .attr('x2', x2)
-                .attr('y2', y2)
-                .attr('stroke', '#666')
-                .attr('stroke-width', 2)
-                .attr('marker-end', 'url(#arrowhead)');
-
-            // 双向链表：画 last 回指箭头
-            if (curr.node instanceof DoublyLinkedListNode && next.node instanceof DoublyLinkedListNode) {
-                this.mainGroup.append('line')
-                    .attr('class', 'link-line')
-                    .attr('x1', next.x + LinkedListVisualizer.NODE_WIDTH / 2)
-                    .attr('y1', yBase + LinkedListVisualizer.NODE_HEIGHT - 8)
-                    .attr('x2', curr.x + LinkedListVisualizer.NODE_WIDTH / 2)
-                    .attr('y2', yBase + LinkedListVisualizer.NODE_HEIGHT - 8)
-                    .attr('stroke', '#aaa')
-                    .attr('stroke-width', 1.2)
-                    .attr('marker-end', 'url(#arrowhead)')
-                    .style('opacity', 0.7);
-            }
-        }
-
-        // 循环链表/双端队列：末尾节点回指哨兵
-        if (this.mode === 'sentinel' && layout.length >= 2) {
-            const headerItem = layout[0];
-            const lastItem = layout[layout.length - 1];
-            const isCircular = lastItem.node.next === headerItem.node;
-            if (isCircular) {
-                const x1 = lastItem.x + LinkedListVisualizer.NODE_WIDTH;
-                const y1 = lastItem.y + LinkedListVisualizer.NODE_HEIGHT / 2;
-                const x2 = headerItem.x;
-                const y2 = headerItem.y + LinkedListVisualizer.NODE_HEIGHT / 2;
-                // 圆弧回指：使用二次贝塞尔
-                this.mainGroup.append('path')
-                    .attr('class', 'link-line')
-                    .attr('d', `M ${x1} ${y1} C ${x1 + 60} ${y1 - 40}, ${x2 - 60} ${y2 - 40}, ${x2} ${y2}`)
-                    .attr('fill', 'none')
-                    .attr('stroke', '#666')
-                    .attr('stroke-width', 2)
-                    .attr('marker-end', 'url(#arrowhead)');
-            }
-        }
+        // 双向链表：last 回指箭头
+        layout.forEach(item => {
+            if (!(item.node instanceof DoublyLinkedListNode)) return;
+            const last = item.node.last;
+            if (!last) return;
+            const target = posById.get(last.getId());
+            if (!target) return;
+            const y = item.y + LinkedListVisualizer.NODE_HEIGHT - 8;
+            const ty = target.y + LinkedListVisualizer.NODE_HEIGHT - 8;
+            layer.append('line')
+                .attr('class', 'link-line link-back')
+                .attr('x1', item.x + LinkedListVisualizer.NODE_WIDTH / 2)
+                .attr('y1', y)
+                .attr('x2', target.x + LinkedListVisualizer.NODE_WIDTH / 2)
+                .attr('y2', ty)
+                .attr('stroke', '#aaa')
+                .attr('stroke-width', 1.2)
+                .attr('marker-end', 'url(#arrowhead)')
+                .style('opacity', 0.7);
+        });
 
         // 哈希表：桶索引标签
         if (this.mode === 'hashtable') {
@@ -379,7 +385,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
                 }
             });
             bucketSet.forEach((x, bucket) => {
-                this.mainGroup.append('text')
+                layer.append('text')
                     .attr('class', 'bucket-label')
                     .attr('x', x - 30)
                     .attr('y', LinkedListVisualizer.START_Y + bucket * LinkedListVisualizer.ROW_GAP + LinkedListVisualizer.NODE_HEIGHT / 2 + 5)
@@ -392,9 +398,75 @@ export class LinkedListVisualizer extends BaseVisualizer {
     }
 
     /**
+     * 画一条后继箭头（from -> to）
+     * @param curved 是否需要弧线（目标不在右侧时绕开中间节点）
+     */
+    private drawArrow(
+        layer: d3.Selection<SVGGElement, unknown, null, undefined>,
+        from: LayoutItem, to: LayoutItem,
+        curved: boolean, color: string, width: number,
+    ): void {
+        const x1 = from.x + LinkedListVisualizer.NODE_WIDTH;
+        const y1 = from.y + LinkedListVisualizer.NODE_HEIGHT / 2;
+        const x2 = to.x;
+        const y2 = to.y + LinkedListVisualizer.NODE_HEIGHT / 2;
+        if (curved) {
+            layer.append('path')
+                .attr('class', 'link-line link-curve')
+                .attr('d', `M ${x1} ${y1} C ${x1 + 60} ${y1 - 70}, ${x2 - 60} ${y2 - 70}, ${x2} ${y2}`)
+                .attr('fill', 'none')
+                .attr('stroke', color)
+                .attr('stroke-width', width)
+                .attr('marker-end', 'url(#arrowhead)');
+            return;
+        }
+        layer.append('line')
+            .attr('class', 'link-line')
+            .attr('x1', x1)
+            .attr('y1', y1)
+            .attr('x2', x2)
+            .attr('y2', y2)
+            .attr('stroke', color)
+            .attr('stroke-width', width)
+            .attr('marker-end', 'url(#arrowhead)');
+    }
+
+    /**
+     * 气泡层/箭头层（保证连线画在节点下方）
+     */
+    private arrowLayer(): d3.Selection<SVGGElement, unknown, null, undefined> {
+        let layer = this.mainGroup.select<SVGGElement>('g.link-layer');
+        if (layer.empty()) {
+            layer = this.mainGroup.append('g').attr('class', 'link-layer');
+        }
+        layer.lower();
+        return layer;
+    }
+
+    /**
+     * 高亮（闪烁）第index个数据节点（不含哨兵），供“查找/修改”动画使用
+     * @param index 数据节点下标（从0开始）
+     */
+    public highlightIndex(index: number): void {
+        const items = this.collectLayout().filter(item => !item.isSentinel);
+        if (index < 0 || index >= items.length) return;
+        const g = this.mainGroup.select(`.linked-node[data-id="${items[index].node.getId()}"]`);
+        if (g.empty()) return;
+        g.select('.node-box')
+            .transition()
+            .duration(150)
+            .attr('stroke', COLOR_FLASH)
+            .attr('stroke-width', 4)
+            .transition()
+            .duration(450)
+            .attr('stroke', '#333')
+            .attr('stroke-width', 2);
+    }
+
+    /**
      * 渲染指针标签（栈顶/队头队尾/哨兵）
      */
-    private renderLabels(layout: { node: LinkedNode<any>; x: number; y: number; isSentinel: boolean }[]): void {
+    private renderLabels(layout: LayoutItem[]): void {
         this.mainGroup.selectAll('.ds-label').remove();
         if (!this.ds || layout.length === 0) return;
 
@@ -412,10 +484,11 @@ export class LinkedListVisualizer extends BaseVisualizer {
         };
 
         // 链式栈：top 指针；普通链表：head 指针
-        if (this.ds.head !== undefined && this.ds.header === undefined && !Array.isArray(this.ds.arr)) {
-            const headItem = layout.find(item => item.node === this.ds.head);
+        const ds = this.ds;
+        if (ds instanceof LinkedList || ds instanceof DoubleLinkedList || ds instanceof LinkedStack) {
+            const headItem = layout.find(item => item.node === ds.getHeadNode());
             if (headItem) {
-                const isStack = typeof this.ds.constructor === 'function' && /Stack/i.test(this.ds.constructor.name);
+                const isStack = ds instanceof LinkedStack;
                 addLabel(headItem.x + LinkedListVisualizer.NODE_WIDTH / 2, headItem.y - 10, isStack ? 'top' : 'head', '#e67e22');
             }
         }
@@ -426,8 +499,8 @@ export class LinkedListVisualizer extends BaseVisualizer {
             addLabel(headerItem.x + LinkedListVisualizer.NODE_WIDTH / 2, headerItem.y - 10, 'header', '#e67e22');
 
             // 队列：tail 指针
-            if (this.ds.tail !== undefined && this.ds.tail !== null) {
-                const tailItem = layout.find(item => item.node === this.ds.tail && !item.isSentinel);
+            if (ds instanceof LinkedQueue) {
+                const tailItem = layout.find(item => item.node === ds.getTailNode() && !item.isSentinel);
                 if (tailItem) {
                     addLabel(tailItem.x + LinkedListVisualizer.NODE_WIDTH / 2, tailItem.y - 10, 'tail', '#3498db');
                 }

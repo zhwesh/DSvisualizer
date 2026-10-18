@@ -1,10 +1,36 @@
+import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
 import { DataNode } from '../node/DataNode';
 import { BinaryTreeNode } from '../node/BinaryTreeNode/BinaryTreeNode';
 import { TreeNode } from '../node/TreeNode/TreeNode';
 import { TrieNode } from '../node/TreeNode/impl/TrieNode';
 import { ArrayNode } from '../node/ArrayNode/ArrayNode';
+import { BinarySearchTreeNode } from '../node/BinaryTreeNode/impl/BinarySearchTreeNode/BinarySearchTreeNode';
+import { SegmentTreeNode } from '../node/BinaryTreeNode/impl/SegmentTreeNode';
+import { BinaryTreeTraversalNode } from '../node/BinaryTreeNode/impl/BinaryTreeTraversalNode';
+import { AVLTreeNode } from '../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/AVLTreeNode';
 import { RedBlackTreeNode, RedBlackTree_Red } from '../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/RedBlackTreeNode';
+import { Trie } from '../datastructure/Tree/Trie/Trie';
+
+// 树形数据结构统一只读视图（通过各数据类暴露的只读 getter 提供根节点）
+// 注意：二叉树遍历等算法类实例也走同一条创建通道，但没有 getRootNode，必须按可选方法处理
+interface TreeLike {
+    getRootNode?(): unknown;
+}
+
+// 渲染布局项类型
+interface BinaryLayoutItem {
+    node: BinaryTreeNode<any>;
+    x: number;
+    y: number;
+}
+interface TrieLayoutItem {
+    node: TrieNode;
+    parent: TrieNode | null;
+    letter: string | null;
+    depth: number;
+    order: number;
+}
 
 // ---------- 配色 ----------
 const COLOR_RED = '#e74c3c';
@@ -13,16 +39,21 @@ const COLOR_GREEN = '#2ecc71';
 const COLOR_WHITE = '#ffffff';
 const COLOR_TEXT = '#333333';
 const COLOR_FLASH = '#f39c12';
+const COLOR_AUX = '#7f8c8d';
 
 /**
  * 二叉树可视化器
  * 处理BST、AVL、红黑树、替罪羊树、Treap、线段树、二叉树遍历、Trie（多叉树）的渲染和动画。
+ *
+ * 渲染数据源是可视化层自己登记的节点表（节点经create创建时登记），而不是数据结构实例的根指针：
+ * 旋转等原子操作先改节点链接、之后数据结构才更新根指针，若只读根指针，
+ * 旋转那一帧会看不到整棵新子树（表现为节点缺失、连线消失）。
  */
 export class TreeVisualizer extends BaseVisualizer {
-    // 所有节点ID -> 节点对象（用于删除与闪烁定位）
+    // 所有节点ID -> 节点对象（用于连线、删除与闪烁定位）
     private nodes: Map<number, BinaryTreeNode<any> | TreeNode<any>> = new Map();
-    // 当前绑定的数据结构实例（BinarySearchTree/AVLTree/RedBlackTree/Trie等）
-    private ds: any = null;
+    // 当前绑定的数据结构实例（BinarySearchTree/AVLTree/RedBlackTree/SegmentTree/Trie等）
+    private ds: TreeLike | null = null;
     // 渲染模式
     private mode: 'binary' | 'trie' = 'binary';
     // 遍历结果数组
@@ -35,7 +66,7 @@ export class TreeVisualizer extends BaseVisualizer {
     private static readonly H_GAP = 50;
     private static readonly V_GAP = 60;
     private static readonly START_X = 560;
-    private static readonly START_Y = 70;
+    private static readonly START_Y = 90;
     private static readonly TRIE_H_GAP = 32;
     private static readonly TRIE_V_GAP = 50;
     // 画布尺寸（与 viewBox 一致），用于树整体居中
@@ -46,7 +77,7 @@ export class TreeVisualizer extends BaseVisualizer {
     private static readonly MIN_VIEW_H = 240;
 
     // ---------- 原子操作分发 ----------
-    onOp(node: DataNode, method: string, _args: any[]): void {
+    onOp(node: DataNode, method: string, args: any[]): void {
         // 遍历结果数组
         if (node instanceof ArrayNode) {
             this.handleAnswerArray(node);
@@ -60,7 +91,7 @@ export class TreeVisualizer extends BaseVisualizer {
         }
         // 数据结构实例（非节点）
         if (!(node instanceof BinaryTreeNode)) {
-            this.handleDsOp(node, method);
+            this.handleDsOp(node, method, args);
             return;
         }
 
@@ -75,16 +106,16 @@ export class TreeVisualizer extends BaseVisualizer {
             case '_set_value':
             case '_set_height':     // AVL高度
             case '_set_color':      // 红黑树颜色
-            case '_swap_color':     // 红黑树交换颜色
             case '_set_size':       // 替罪羊树size
             case '_set_lazy':       // 线段树懒标记
             case '_set_sum':        // 线段树和
-            case '_set_visited':    // 遍历访问标记
+            case '_set_visited':    // 查找/遍历访问标记
             case '_clear_visited':  // 遍历清空访问
                 this.render();
                 break;
             case '_rotate_left':
             case '_rotate_right':
+                // 旋转已改变树的形状：重画整棵树并高亮参与旋转的节点
                 this.render();
                 this.flashNode(treeNode.getId());
                 break;
@@ -100,13 +131,14 @@ export class TreeVisualizer extends BaseVisualizer {
     /**
      * 处理数据结构级原子操作
      */
-    private handleDsOp(node: any, method: string): void {
+    private handleDsOp(node: DataNode, method: string, args: any[]): void {
         switch (method) {
             case '_create':
             case '_set_root':
-                this.ds = node;
-                // 依据根节点形态判断渲染模式
-                this.mode = (node.root && node.root.pass !== undefined) ? 'trie' : 'binary';
+                this.ds = node as unknown as TreeLike;
+                // 依据数据结构类型判断渲染模式（Trie为多叉树）
+                this.mode = node instanceof Trie ? 'trie' : 'binary';
+                this.registerRoot(args);
                 if (this.mode === 'trie') {
                     this.renderTrie();
                 } else {
@@ -114,6 +146,9 @@ export class TreeVisualizer extends BaseVisualizer {
                 }
                 break;
             case '_clear':
+                // 清空：数据结构只把根指针置空，旧节点之间仍然互相引用，
+                // 必须同时丢弃本层登记的节点，否则会把已清空的树继续画出来
+                this.nodes.clear();
                 if (this.mode === 'trie') {
                     this.renderTrie();
                 } else {
@@ -122,6 +157,16 @@ export class TreeVisualizer extends BaseVisualizer {
                 break;
             default:
                 break;
+        }
+    }
+
+    /**
+     * 把_set_root(root)传入的根节点补登记（兜底：节点未在本可视化器登记的情况）
+     */
+    private registerRoot(args: any[]): void {
+        const root = args.length > 0 ? args[0] : null;
+        if (root instanceof BinaryTreeNode) {
+            this.nodes.set(root.getId(), root);
         }
     }
 
@@ -138,66 +183,83 @@ export class TreeVisualizer extends BaseVisualizer {
             .attr('stroke-width', 4)
             .transition()
             .duration(350)
-            .attr('stroke', (d: any) => this.nodeStrokeColor(d));
+            .attr('stroke', () => '#666');
     }
 
     /**
-     * 节点边框颜色
+     * 数据结构实例记录的根节点（原子操作过程中可能滞后于真实链接，仅作兜底）
+     * 二叉树遍历等算法类实例没有 getRootNode，此时返回null（由节点登记表反推根）
      */
-    private nodeStrokeColor(_d: any): string {
-        return '#666';
+    private getDsRoot(): BinaryTreeNode<any> | null {
+        if (!this.ds) return null;
+        const getter = this.ds.getRootNode;
+        if (typeof getter !== 'function') return null;
+        const root = getter.call(this.ds);
+        if (root === null || root === undefined) return null;
+        return root as BinaryTreeNode<any>;
     }
 
     /**
-     * 自动查找根节点：优先数据结构实例的root，否则扫描未被引用的节点
+     * 森林的根节点集合：由本层登记的节点反推——没有被任何节点当作孩子的即为根。
+     * 旋转等原子操作先改链接、后由数据结构调用_set_root，
+     * 因此这里得到的始终是当前的真实结构。
      */
-    private findRoot(): BinaryTreeNode<any> | null {
-        if (this.ds && this.ds.root !== undefined && this.ds.root !== null) {
-            return this.ds.root;
-        }
-        if (this.nodes.size === 0) return null;
-
+    private collectRoots(): BinaryTreeNode<any>[] {
         const childIds = new Set<number>();
-        this.nodes.forEach((n: any) => {
+        this.nodes.forEach((n) => {
+            if (!(n instanceof BinaryTreeNode)) return;
             if (n.left) childIds.add(n.left.getId());
             if (n.right) childIds.add(n.right.getId());
         });
 
-        let root: BinaryTreeNode<any> | null = null;
-        this.nodes.forEach((n: any, id: number) => {
-            if (!childIds.has(id)) {
-                root = n;
-            }
+        const roots: BinaryTreeNode<any>[] = [];
+        this.nodes.forEach((n, id) => {
+            if (!(n instanceof BinaryTreeNode)) return;
+            if (!childIds.has(id)) roots.push(n);
         });
-        return root;
+
+        const dsRoot = this.getDsRoot();
+        if (roots.length === 0) {
+            if (dsRoot) roots.push(dsRoot);
+            return roots;
+        }
+        // 数据结构记录的根排在最前，保证主树位置稳定（只影响左右次序）
+        if (dsRoot) {
+            roots.sort((a, b) => (a === dsRoot ? -1 : b === dsRoot ? 1 : a.getId() - b.getId()));
+        }
+        return roots;
     }
 
     /**
-     * 计算二叉树节点位置（中序遍历布局 + 整体居中）
+     * 计算二叉树节点位置（中序遍历决定水平位置、深度决定垂直位置，最后整体居中）
+     * 支持多根（原子操作过程中的临时状态），避免整棵子树不可见
      */
-    private layoutTree(): { node: BinaryTreeNode<any>; x: number; y: number }[] {
-        const result: { node: BinaryTreeNode<any>; x: number; y: number }[] = [];
-        const root = this.findRoot();
-        if (!root) return result;
+    private layoutTree(): BinaryLayoutItem[] {
+        const result: BinaryLayoutItem[] = [];
+        const roots = this.collectRoots();
+        if (roots.length === 0) return result;
 
-        let pos = 0;
-        const maxDepth = this.getDepth(root);
-        const totalWidth = maxDepth * 4 * TreeVisualizer.H_GAP;
-
+        // 每个节点只登记一次（防止环导致死循环/重复渲染）
+        const visited = new Set<number>();
+        const flat: { node: BinaryTreeNode<any>; depth: number }[] = [];
         const traverse = (n: BinaryTreeNode<any> | null, depth: number): void => {
-            if (!n) return;
-            if (n.left) traverse(n.left, depth + 1);
-
-            const x = TreeVisualizer.START_X - totalWidth / 2 + pos * TreeVisualizer.H_GAP;
-            const y = TreeVisualizer.START_Y + depth * TreeVisualizer.V_GAP;
-            result.push({ node: n, x, y });
-            pos++;
-
-            if (n.right) traverse(n.right, depth + 1);
+            if (!n || visited.has(n.getId())) return;
+            visited.add(n.getId());
+            traverse(n.left, depth + 1);
+            flat.push({ node: n, depth });
+            traverse(n.right, depth + 1);
         };
+        roots.forEach((root) => traverse(root, 0));
+        if (flat.length === 0) return result;
 
-        traverse(root, 0);
-        if (result.length === 0) return result;
+        const firstX = TreeVisualizer.START_X - (flat.length - 1) * TreeVisualizer.H_GAP / 2;
+        flat.forEach((item, i) => {
+            result.push({
+                node: item.node,
+                x: firstX + i * TreeVisualizer.H_GAP,
+                y: TreeVisualizer.START_Y + item.depth * TreeVisualizer.V_GAP,
+            });
+        });
 
         // 计算包围盒（含节点半径与上方标签），使整棵树居中于画布中心
         const tagH = TreeVisualizer.NODE_RADIUS + 12;   // 节点上方标签占用的高度
@@ -218,28 +280,41 @@ export class TreeVisualizer extends BaseVisualizer {
     }
 
     /**
-     * 计算树的深度
+     * 节点显示文本（按节点类型读取，不使用鸭子类型）
      */
-    private getDepth(node: BinaryTreeNode<any> | null): number {
-        if (!node) return 0;
-        return 1 + Math.max(this.getDepth(node.left), this.getDepth(node.right));
-    }
-
-    /**
-     * 节点显示文本
-     */
-    private nodeText(node: any): string {
-        if (node.val !== undefined && node.val !== null) return String(node.val);
-        if (node.sum !== undefined && node.sum !== null) return String(node.sum);
+    private nodeText(node: BinaryTreeNode<any>): string {
+        if (node instanceof BinarySearchTreeNode) return String(node.val);
+        if (node instanceof BinaryTreeTraversalNode) return String(node.val);
+        if (node instanceof SegmentTreeNode) return String(node.sum);
         return '';
     }
 
     /**
-     * 节点填充颜色（红黑树/遍历节点/默认）
+     * 节点附加标签（AVL高度 / 线段树懒标记）
      */
-    private nodeFill(node: any): string {
-        // 查找/遍历高亮：当前节点绿色（优先级最高，红黑树查找时也变绿）
-        if (node.visited) return COLOR_GREEN;
+    private nodeAux(node: BinaryTreeNode<any>): string {
+        if (node instanceof AVLTreeNode) return 'h=' + node.height;
+        if (node instanceof SegmentTreeNode) {
+            return (node.lazy !== null && node.lazy !== 0) ? 'lazy=' + node.lazy : '';
+        }
+        return '';
+    }
+
+    /**
+     * 附加标签颜色（线段树懒标记用橙色突出）
+     */
+    private nodeAuxFill(node: BinaryTreeNode<any>): string {
+        if (node instanceof SegmentTreeNode && node.lazy !== null && node.lazy !== 0) return COLOR_FLASH;
+        return COLOR_AUX;
+    }
+
+    /**
+     * 节点填充颜色（查找/遍历高亮 / 红黑树颜色 / 默认）
+     */
+    private nodeFill(node: BinaryTreeNode<any>): string {
+        // 查找/遍历高亮：当前节点绿色（优先于红黑树颜色）
+        if (node instanceof BinarySearchTreeNode && node.visited) return COLOR_GREEN;
+        if (node instanceof BinaryTreeTraversalNode && node.visited) return COLOR_GREEN;
         if (node instanceof RedBlackTreeNode) {
             return node.color === RedBlackTree_Red ? COLOR_RED : COLOR_BLACK;
         }
@@ -249,10 +324,23 @@ export class TreeVisualizer extends BaseVisualizer {
     /**
      * 节点文字颜色
      */
-    private nodeTextFill(node: any): string {
-        if (node.visited) return COLOR_WHITE;
+    private nodeTextFill(node: BinaryTreeNode<any>): string {
+        if (node instanceof BinarySearchTreeNode && node.visited) return COLOR_WHITE;
+        if (node instanceof BinaryTreeTraversalNode && node.visited) return COLOR_WHITE;
         if (node instanceof RedBlackTreeNode) return COLOR_WHITE;
         return COLOR_TEXT;
+    }
+
+    /**
+     * 边层（保证连线永远画在节点下方；二叉树与Trie共用）
+     */
+    private edgeLayer(): d3.Selection<SVGGElement, unknown, null, undefined> {
+        let layer = this.mainGroup.select<SVGGElement>('g.tree-edge-layer');
+        if (layer.empty()) {
+            layer = this.mainGroup.append('g').attr('class', 'tree-edge-layer');
+        }
+        layer.lower();
+        return layer;
     }
 
     /**
@@ -261,27 +349,24 @@ export class TreeVisualizer extends BaseVisualizer {
     private render(): void {
         if (this.mode !== 'binary') return;
         const layout = this.layoutTree();
-        const posMap = new Map<number, { x: number; y: number }>();
-        layout.forEach(item => posMap.set(item.node.getId(), { x: item.x, y: item.y }));
 
-        // 1. 边
-        this.renderEdges(posMap);
+        // 1. 连线（在节点下层）
+        this.renderEdges(layout);
 
-        // 2. 节点
-        const nodeGroups = this.mainGroup.selectAll('.tree-node')
-            .data(layout, (d: any) => d.node.getId());
+        // 2. 节点（key取节点自身id，保证增删时复用同一个DOM元素）
+        const nodeGroups = this.mainGroup.selectAll<SVGGElement, BinaryLayoutItem>('.tree-node')
+            .data<BinaryLayoutItem>(layout, (d: BinaryLayoutItem) => d.node.getId());
 
-        // enter：直接可见（不用淡入动画——快速连续渲染会打断动画导致 opacity 卡 0，圆圈被“吞掉”）
+        // enter：直接出现在目标位置（不做淡入——快速连续渲染会打断动画导致透明度卡0）
         const enterGroups = nodeGroups.enter()
             .append('g')
             .attr('class', 'tree-node')
-            .attr('data-id', (d: any) => d.node.getId())
-            .attr('transform', (d: any) => `translate(${d.x}, ${d.y})`)
+            .attr('data-id', (d: BinaryLayoutItem) => d.node.getId())
+            .attr('transform', (d: BinaryLayoutItem) => `translate(${d.x}, ${d.y})`)
             .style('opacity', 1);
 
         enterGroups.append('circle')
             .attr('r', TreeVisualizer.NODE_RADIUS)
-            .attr('fill', (d: any) => this.nodeFill(d.node))
             .attr('stroke', '#666')
             .attr('stroke-width', 1.5);
 
@@ -291,27 +376,40 @@ export class TreeVisualizer extends BaseVisualizer {
             .attr('dy', '0.35em')
             .style('font-size', '14px')
             .style('font-weight', 'bold')
-            .style('font-family', 'monospace')
-            .attr('fill', (d: any) => this.nodeTextFill(d.node))
-            .text((d: any) => this.nodeText(d.node));
+            .style('font-family', 'monospace');
 
-        // 更新：仅对已有节点做位置过渡（不动 opacity）
-        nodeGroups.transition('move').duration(300).attr('transform', (d: any) => `translate(${d.x}, ${d.y})`);
+        enterGroups.append('text')
+            .attr('class', 'node-aux')
+            .attr('text-anchor', 'middle')
+            .attr('y', -(TreeVisualizer.NODE_RADIUS + 6))
+            .style('font-size', '10px')
+            .style('font-family', 'monospace');
 
-        nodeGroups.select('circle')
-            .attr('fill', (d: any) => this.nodeFill(d.node));
+        // 3. 统一更新（enter与update都更新文本/配色/附加标签）
+        const merged = enterGroups.merge(nodeGroups);
 
-        nodeGroups.select('.node-value')
-            .text((d: any) => this.nodeText(d.node))
-            .attr('fill', (d: any) => this.nodeTextFill(d.node));
+        merged.select('circle')
+            .attr('fill', (d: BinaryLayoutItem) => this.nodeFill(d.node));
 
-        // 退出：直接移除（不用淡出动画，避免残留 opacity=0 的不可见节点）
+        merged.select('.node-value')
+            .text((d: BinaryLayoutItem) => this.nodeText(d.node))
+            .attr('fill', (d: BinaryLayoutItem) => this.nodeTextFill(d.node));
+
+        merged.select('.node-aux')
+            .text((d: BinaryLayoutItem) => this.nodeAux(d.node))
+            .attr('fill', (d: BinaryLayoutItem) => this.nodeAuxFill(d.node));
+
+        // 4. 位置过渡（enter已在目标位置，此处对已有节点生效）
+        merged.transition('move').duration(300)
+            .attr('transform', (d: BinaryLayoutItem) => `translate(${d.x}, ${d.y})`);
+
+        // 5. 退出节点直接移除（不做淡出，避免残留透明度为0的节点）
         nodeGroups.exit().remove();
 
-        // 3. 遍历结果数组（底部）
+        // 6. 遍历结果数组（底部）
         this.renderAnswerArray();
 
-        // 4. 自适应 viewBox：树的包围盒自动填满画布，任何窗口宽度下数值都清晰可读
+        // 7. 自适应 viewBox：树的包围盒自动填满画布，任何窗口宽度下数值都清晰可读
         this.fitViewBox(layout.map(i => ({ x: i.x, y: i.y })));
     }
 
@@ -331,11 +429,11 @@ export class TreeVisualizer extends BaseVisualizer {
             minY = Math.min(minY, p.y);
             maxY = Math.max(maxY, p.y);
         });
-        // 留白：左右 R+30，上方含标签 R+40，下方 R+20
+        // 留白：左右 R+30，上方含标签 R+40，下方含附加标签
         let x0 = minX - R - 30;
         const y0 = minY - R - 40;
         let w = (maxX - minX) + 2 * (R + 30);
-        let h = (maxY - minY) + R + 60;
+        let h = (maxY - minY) + 2 * R + 85;
         // 最小视图尺寸：节点少时避免被过度放大（圆过大）
         w = Math.max(w, TreeVisualizer.MIN_VIEW_W);
         h = Math.max(h, TreeVisualizer.MIN_VIEW_H);
@@ -358,39 +456,37 @@ export class TreeVisualizer extends BaseVisualizer {
     }
 
     /**
-     * 渲染树边（父子节点连线）
+     * 渲染树边（父子节点连线）：以本次布局为准，保证每条真实父子关系都有连线
      */
-    private renderEdges(posMap: Map<number, { x: number; y: number }>): void {
-        this.mainGroup.selectAll('.tree-edge').remove();
+    private renderEdges(layout: BinaryLayoutItem[]): void {
+        const layer = this.edgeLayer();
+        layer.selectAll('*').remove();
 
-        this.nodes.forEach((n: any) => {
-            const parentPos = posMap.get(n.getId());
-            if (!parentPos) return;
-            if (n.left) {
-                const childPos = posMap.get(n.left.getId());
-                if (childPos) {
-                    this.mainGroup.append('line')
-                        .attr('class', 'tree-edge')
-                        .attr('x1', parentPos.x)
-                        .attr('y1', parentPos.y)
-                        .attr('x2', childPos.x)
-                        .attr('y2', childPos.y)
-                        .attr('stroke', '#999999')
-                        .attr('stroke-width', 1.5);
-                }
+        const posMap = new Map<number, { x: number; y: number }>();
+        layout.forEach(item => posMap.set(item.node.getId(), { x: item.x, y: item.y }));
+
+        const addEdge = (from: { x: number; y: number }, to: { x: number; y: number }): void => {
+            layer.append('line')
+                .attr('class', 'tree-edge')
+                .attr('x1', from.x)
+                .attr('y1', from.y)
+                .attr('x2', to.x)
+                .attr('y2', to.y)
+                .attr('stroke', '#999999')
+                .attr('stroke-width', 1.5);
+        };
+
+        layout.forEach(item => {
+            const from = { x: item.x, y: item.y };
+            const left = item.node.left;
+            const right = item.node.right;
+            if (left) {
+                const to = posMap.get(left.getId());
+                if (to) addEdge(from, to);
             }
-            if (n.right) {
-                const childPos = posMap.get(n.right.getId());
-                if (childPos) {
-                    this.mainGroup.append('line')
-                        .attr('class', 'tree-edge')
-                        .attr('x1', parentPos.x)
-                        .attr('y1', parentPos.y)
-                        .attr('x2', childPos.x)
-                        .attr('y2', childPos.y)
-                        .attr('stroke', '#999999')
-                        .attr('stroke-width', 1.5);
-                }
+            if (right) {
+                const to = posMap.get(right.getId());
+                if (to) addEdge(from, to);
             }
         });
     }
@@ -400,9 +496,10 @@ export class TreeVisualizer extends BaseVisualizer {
     /**
      * 收集Trie节点（BFS），返回 节点/父节点/边字母/深度/层内序号
      */
-    private collectTrie(): { node: TrieNode; parent: TrieNode | null; letter: string | null; depth: number; order: number }[] {
-        const result: { node: TrieNode; parent: TrieNode | null; letter: string | null; depth: number; order: number }[] = [];
-        const root: TrieNode | null = this.ds ? this.ds.root : null;
+    private collectTrie(): TrieLayoutItem[] {
+        const result: TrieLayoutItem[] = [];
+        const getter = this.ds?.getRootNode;
+        const root = (typeof getter === 'function' ? getter.call(this.ds) : null) as TrieNode | null;
         if (!root) return result;
 
         const queue: { node: TrieNode; parent: TrieNode | null; letter: string | null; depth: number }[] = [];
@@ -464,8 +561,9 @@ export class TreeVisualizer extends BaseVisualizer {
             });
         }
 
-        // 1. 边（带字母标签）
-        this.mainGroup.selectAll('.trie-edge').remove();
+        // 1. 边（带字母标签，同样置于节点下层）
+        const layer = this.edgeLayer();
+        layer.selectAll('*').remove();
         items.forEach(item => {
             if (!item.parent) return;
             const p = posMap.get(item.parent.getId());
@@ -473,7 +571,7 @@ export class TreeVisualizer extends BaseVisualizer {
             if (!p || !c) return;
             const midX = (p.x + c.x) / 2;
             const midY = (p.y + c.y) / 2;
-            this.mainGroup.append('line')
+            layer.append('line')
                 .attr('class', 'trie-edge')
                 .attr('x1', p.x)
                 .attr('y1', p.y)
@@ -481,7 +579,7 @@ export class TreeVisualizer extends BaseVisualizer {
                 .attr('y2', c.y)
                 .attr('stroke', '#999')
                 .attr('stroke-width', 1.5);
-            this.mainGroup.append('text')
+            layer.append('text')
                 .attr('class', 'trie-edge')
                 .attr('x', midX)
                 .attr('y', midY - 4)
@@ -492,15 +590,15 @@ export class TreeVisualizer extends BaseVisualizer {
                 .text(item.letter);
         });
 
-        // 2. 节点（enter 直接可见，不依赖动画，避免快速渲染时 opacity 卡 0）
-        const nodeGroups = this.mainGroup.selectAll('.tree-node')
-            .data(items, (d: any) => d.node.getId());
+        // 2. 节点
+        const nodeGroups = this.mainGroup.selectAll<SVGGElement, TrieLayoutItem>('.tree-node')
+            .data<TrieLayoutItem>(items, (d: TrieLayoutItem) => d.node.getId());
 
         const enterGroups = nodeGroups.enter()
             .append('g')
             .attr('class', 'tree-node')
-            .attr('data-id', (d: any) => d.node.getId())
-            .attr('transform', (d: any) => {
+            .attr('data-id', (d: TrieLayoutItem) => d.node.getId())
+            .attr('transform', (d: TrieLayoutItem) => {
                 const p = posMap.get(d.node.getId())!;
                 return `translate(${p.x}, ${p.y})`;
             })
@@ -519,25 +617,18 @@ export class TreeVisualizer extends BaseVisualizer {
             .style('font-size', '12px')
             .style('font-weight', 'bold')
             .style('font-family', 'monospace')
-            .style('fill', COLOR_TEXT)
-            .text((d: any) => {
-                const n = d.node as TrieNode;
-                return n.pass + '/' + n.end;
-            });
+            .style('fill', COLOR_TEXT);
 
-        // 位置过渡只作用于已有节点，不动 opacity
-        nodeGroups.transition('move').duration(300).attr('transform', (d: any) => {
+        const merged = enterGroups.merge(nodeGroups);
+
+        merged.select('.node-value')
+            .text((d: TrieLayoutItem) => d.node.pass + '/' + d.node.end);
+
+        merged.transition('move').duration(300).attr('transform', (d: TrieLayoutItem) => {
             const p = posMap.get(d.node.getId())!;
             return `translate(${p.x}, ${p.y})`;
         });
 
-        nodeGroups.select('.node-value')
-            .text((d: any) => {
-                const n = d.node as TrieNode;
-                return n.pass + '/' + n.end;
-            });
-
-        // 退出：直接移除
         nodeGroups.exit().remove();
 
         this.renderAnswerArray();

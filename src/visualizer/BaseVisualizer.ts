@@ -26,6 +26,8 @@ export abstract class BaseVisualizer {
      * 清空画布
      */
     clear(): void {
+        this.mainGroup.interrupt();
+        this.mainGroup.selectAll('*').interrupt();
         this.mainGroup.selectAll('*').remove();
     }
 
@@ -33,6 +35,7 @@ export abstract class BaseVisualizer {
      * 销毁可视化器，释放资源
      */
     destroy(): void {
+        this.clear();
         this.mainGroup.remove();
     }
 }

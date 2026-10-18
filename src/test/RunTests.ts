@@ -9,27 +9,28 @@ import { testInsertionSort } from "./algorithm/List/InsertionSortTest";
 import { testKMP } from "./algorithm/List/KMPTest";
 import { testMergeSort } from "./algorithm/List/MergeSortTest";
 import { testQuickSort } from "./algorithm/List/QuickSortTest";
-import { testArrayList } from "./datastucture/List/ArrayListTest";
-import { testCircularLinkedList } from "./datastucture/List/CircularLinkedListTest";
-import { testDoubleLinkedList } from "./datastucture/List/DoubleLinkedListTest";
-import { testSinglyLinkedList } from "./datastucture/List/SinglyLinkedListTest";
-import { testArrayDeque } from "./datastucture/Queue/ArrayDequeTest";
-import { testArrayQueue } from "./datastucture/Queue/ArrayQueueTest";
-import { testLinkedDeque } from "./datastucture/Queue/LinkedDequeTest";
-import { testLinkedQueue } from "./datastucture/Queue/LinkedQueueTest";
-import { testBinaryHeap } from "./datastucture/Queue/PriorityQueue/BinaryHeapTest";
-import { testArrayStack } from "./datastucture/Stack/ArrayStackTest";
-import { testLinkedStack } from "./datastucture/Stack/LinkedStackTest";
-import { testHashTable } from "./datastucture/HashTable/HashTableTest";
-import { testBinaryIndexedTree } from "./datastucture/Other/BinaryIndexedTreeTest";
-import { testUnionFindSet } from "./datastucture/Other/UnionFindSetTest";
-import { testAVLTree } from "./datastucture/Tree/BinarySearchTree/AVLTreeTest";
-import { testBinarySearchTree } from "./datastucture/Tree/BinarySearchTree/BinarySearchTreeTest";
-import { testRedBlackTree } from "./datastucture/Tree/BinarySearchTree/RedBlackTreeTest";
-import { testScapegoatTree } from "./datastucture/Tree/BinarySearchTree/ScapegoatTreeTest";
-import { testTreapTree } from "./datastucture/Tree/BinarySearchTree/TreapTreeTest";
-import { testSegmentTree } from "./datastucture/Tree/SegmentTree/SegmentTreeTest";
-import { testTrie } from "./datastucture/Tree/Trie/TrieTest";
+import { testArrayList } from "./datastructure/List/ArrayListTest";
+import { testCircularLinkedList } from "./datastructure/List/CircularLinkedListTest";
+import { testDoubleLinkedList } from "./datastructure/List/DoubleLinkedListTest";
+import { testSinglyLinkedList } from "./datastructure/List/SinglyLinkedListTest";
+import { testArrayDeque } from "./datastructure/Queue/ArrayDequeTest";
+import { testArrayQueue } from "./datastructure/Queue/ArrayQueueTest";
+import { testLinkedDeque } from "./datastructure/Queue/LinkedDequeTest";
+import { testLinkedQueue } from "./datastructure/Queue/LinkedQueueTest";
+import { testBinaryHeap } from "./datastructure/Queue/PriorityQueue/BinaryHeapTest";
+import { testArrayStack } from "./datastructure/Stack/ArrayStackTest";
+import { testLinkedStack } from "./datastructure/Stack/LinkedStackTest";
+import { testHashTable } from "./datastructure/HashTable/HashTableTest";
+import { testBinaryIndexedTree } from "./datastructure/Other/BinaryIndexedTreeTest";
+import { testUnionFindSet } from "./datastructure/Other/UnionFindSetTest";
+import { testAVLTree } from "./datastructure/Tree/BinarySearchTree/AVLTreeTest";
+import { testBinarySearchTree } from "./datastructure/Tree/BinarySearchTree/BinarySearchTreeTest";
+import { testRedBlackTree } from "./datastructure/Tree/BinarySearchTree/RedBlackTreeTest";
+import { testScapegoatTree } from "./datastructure/Tree/BinarySearchTree/ScapegoatTreeTest";
+import { testTreapTree } from "./datastructure/Tree/BinarySearchTree/TreapTreeTest";
+import { testSegmentTree } from "./datastructure/Tree/SegmentTree/SegmentTreeTest";
+import { testTrie } from "./datastructure/Tree/Trie/TrieTest";
+import { testReadonlyGetters } from "./datastructure/ReadonlyGetterTest";
 import { formatStats, getStats } from "./TestUtils";
 
 /**
@@ -70,6 +71,7 @@ export async function runTests(): Promise<boolean> {
         ["Prim", testPrim],
         ["Dijkstra", testDijkstra],
         ["Floyd", testFloyd],
+        ["ReadonlyGetters", testReadonlyGetters],
     ];
 
     const startTime = performance.now();

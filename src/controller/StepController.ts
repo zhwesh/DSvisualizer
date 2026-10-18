@@ -58,20 +58,21 @@ export class StepController {
      */
     public setStatus(status: number): void {
         if (status === StepStatus.STEP_EXECUTION) {
-            // 单步执行：只唤醒最早等待的复合操作，令其执行一个原子操作
-            if (this.waitQueue.length > 0) {
+            // 单步执行：放行当前挂起的复合操作一拍
+            if (this.pendingResolve !== null) {
+                const resolve = this.pendingResolve;
+                this.pendingResolve = null;
                 this.status = StepStatus.PAUSE_OR_FREE;
-                const resolve = this.waitQueue.shift()!;
                 resolve();
             } else {
                 this.status = status;
             }
         } else if (status === StepStatus.PLAYING) {
-            // 播放：唤醒所有等待中的复合操作，之后由wait()内的定时器控制节奏
+            // 播放：唤醒挂起的复合操作，后续节奏由wait()内的定时器控制
             this.status = status;
-            const queue = this.waitQueue;
-            this.waitQueue = [];
-            for (const resolve of queue) {
+            if (this.pendingResolve !== null) {
+                const resolve = this.pendingResolve;
+                this.pendingResolve = null;
                 resolve();
             }
         } else {
@@ -79,8 +80,8 @@ export class StepController {
         }
     }
 
-    // 等待被唤醒的wait()回调队列（FIFO，避免并发wait相互覆盖）
-    private waitQueue: (() => void)[] = [];
+    // 当前挂起的wait()回调（复合操作严格串行，同一时刻至多一个）
+    private pendingResolve: (() => void) | null = null;
 
     /**
      * 提供给算法层的复合操作
@@ -102,7 +103,7 @@ export class StepController {
                             this.status = StepStatus.PAUSE_OR_FREE;
                             resolve();
                         } else {
-                            this.waitQueue.push(resolve);
+                            this.pendingResolve = resolve;
                         }
                     },
                     this.timeInterval * 1000
@@ -110,7 +111,7 @@ export class StepController {
             });
         } else {                                            // 暂停状态：直接挂起，等待用户操作唤醒
             return new Promise<void>((resolve) => {
-                this.waitQueue.push(resolve);
+                this.pendingResolve = resolve;
             });
         }
     }

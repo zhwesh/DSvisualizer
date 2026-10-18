@@ -12,6 +12,9 @@ import {
 } from '../node/ArrayNode/impl/BinaryIndexedTreeNode';
 import { KMPNode } from '../node/ArrayNode/impl/KMPNode';
 import { QuickSortNode } from '../node/ArrayNode/impl/QuickSortNode';
+import { BubbleSortNode } from '../node/ArrayNode/impl/BubbleSortNode';
+import { InsertionSortNode } from '../node/ArrayNode/impl/InsertionSortNode';
+import { MergeSortNode } from '../node/ArrayNode/impl/MergeSortNode';
 
 // ---------- 配色常量（与设计图风格一致） ----------
 const COLOR_DEFAULT = '#ffffff';
@@ -40,6 +43,8 @@ interface ArrayGroupInfo {
 export class ArrayVisualizer extends BaseVisualizer {
     // 数组节点ID -> 渲染信息
     private arrayNodes: Map<number, ArrayGroupInfo> = new Map();
+    // 交换动画结束后延迟重绘的定时器，销毁时统一清理
+    private pendingTimers: ReturnType<typeof setTimeout>[] = [];
 
     private nextArrayY: number = 80;
     private static readonly CELL_WIDTH = 60;
@@ -118,9 +123,9 @@ export class ArrayVisualizer extends BaseVisualizer {
     private buildRows(node: ArrayNode): { key: string; label: string; values: (string | number | null)[] }[] {
         const rows: { key: string; label: string; values: (string | number | null)[] }[] = [];
 
-        // 主行：data 数组
-        const mainValues: (string | number | null)[] = (node as any).str !== undefined
-            ? Array.from((node as any).str as string)
+        // 主行：data 数组（KMP主串按字符展开）
+        const mainValues: (string | number | null)[] = node instanceof KMPNode
+            ? Array.from(node.str)
             : [...node.data];
         rows.push({ key: 'data', label: this.getLabel(node), values: mainValues });
 
@@ -144,30 +149,30 @@ export class ArrayVisualizer extends BaseVisualizer {
      * 计算单元格填充颜色（依据节点状态）
      */
     private cellFill(node: ArrayNode, rowKey: string, idx: number, isCover: boolean): string {
-        const n: any = node;
         if (rowKey === 'data') {
             if (node instanceof BinaryIndexedTreeNode) {
-                if (n.dataColor && n.dataColor[idx] === true) return COLOR_GREEN;
+                if (node.dataColor?.[idx] === true) return COLOR_GREEN;
             } else if (node instanceof KMPNode) {
                 // data 行即 next 数组：无色
                 return COLOR_DEFAULT;
-            } else if (n.color && n.color[idx] === true) {
+            } else if (node instanceof QuickSortNode || node instanceof BubbleSortNode ||
+                       node instanceof InsertionSortNode || node instanceof MergeSortNode) {
                 // 排序节点：绿色高亮
-                return COLOR_GREEN;
+                if (node.color?.[idx] === true) return COLOR_GREEN;
             }
         }
         if (rowKey === 'template' && node instanceof KMPNode) {
-            if (n.prefixColor[idx] === true) return COLOR_BLUE;
-            if (n.suffixColor[idx] === true) return COLOR_GREEN;
+            if (node.prefixColor?.[idx] === true) return COLOR_BLUE;
+            if (node.suffixColor?.[idx] === true) return COLOR_GREEN;
         }
         if (rowKey === 'tree' && node instanceof BinaryIndexedTreeNode) {
-            const c = n.treeColor[idx];
+            const c = node.treeColor?.[idx];
             if (c === BinaryIndexedTree_TREE_GREEN) return COLOR_GREEN;
             if (c === BinaryIndexedTree_TREE_RED) return COLOR_RED;
             return COLOR_GRAY;
         }
-        if (isCover) {
-            const c = n.treeColor?.[idx];
+        if (isCover && node instanceof BinaryIndexedTreeNode) {
+            const c = node.treeColor?.[idx];
             if (c === BinaryIndexedTree_TREE_GREEN) return COLOR_GREEN;
             if (c === BinaryIndexedTree_TREE_RED) return COLOR_RED;
             return COLOR_GRAY;
@@ -225,16 +230,16 @@ export class ArrayVisualizer extends BaseVisualizer {
         // 2. 逐行渲染单元格
         rows.forEach((row, r) => {
             const rowY = startY + r * (cellHeight + ArrayVisualizer.ROW_GAP);
-            const cells = group.selectAll(`.cell.row-${row.key}`)
-                .data(row.values, (_d: any, i: number) => i);
+            const cells = group.selectAll<SVGGElement, string | number | null>(`.cell.row-${row.key}`)
+                .data<string | number | null>(row.values, (_d: unknown, i: number) => i);
 
             // enter：创建单元格（一次捕获 enter 选择，后续合并复用）
             const enterCells = cells.enter()
                 .append('g')
                 .attr('class', `cell row-${row.key}`)
-                .attr('transform', (_d: any, i: number) => `translate(${startX + i * cellWidth}, ${rowY})`);
+                .attr('transform', (_d: unknown, i: number) => `translate(${startX + i * cellWidth}, ${rowY})`);
 
-            enterCells.each(function(this: SVGGElement, _d: any) {
+            enterCells.each(function (this: SVGGElement, _d: unknown) {
                 const g = d3.select(this);
                 g.append('rect')
                     .attr('class', 'cell-rect')
@@ -250,17 +255,17 @@ export class ArrayVisualizer extends BaseVisualizer {
                     .attr('text-anchor', 'middle')
                     .style('font-size', '15px')
                     .style('font-family', 'monospace')
-                    .text((d: any) => d !== null && d !== undefined ? String(d) : '');
+                    .text((d: unknown) => d !== null && d !== undefined ? String(d) : '');
             });
 
             // 更新：位置 + 值 + 颜色（enter 与 update 合并）
-            cells.merge(enterCells as any)
-                .attr('transform', (_d: any, i: number) => `translate(${startX + i * cellWidth}, ${rowY})`)
+            cells.merge(enterCells)
+                .attr('transform', (_d: unknown, i: number) => `translate(${startX + i * cellWidth}, ${rowY})`)
                 .select('.cell-value')
-                .text((d: any) => d !== null && d !== undefined ? String(d) : '');
+                .text((d: unknown) => d !== null && d !== undefined ? String(d) : '');
 
             cells.select('.cell-rect')
-                .attr('fill', (_d: any, i: number) => this.cellFill(node, row.key, i, false));
+                .attr('fill', (_d: unknown, i: number) => this.cellFill(node, row.key, i, false));
 
             cells.exit().remove();
         });
@@ -268,9 +273,8 @@ export class ArrayVisualizer extends BaseVisualizer {
         // 3. 树状数组覆盖条（渲染在 data 行上方）
         if (node instanceof BinaryIndexedTreeNode) {
             group.selectAll('.cover-bar').remove();
-            const n = node as any;
             const rowY = startY;
-            for (let i = 1; i < n.data.length; ++i) {
+            for (let i = 1; i < node.data.length; ++i) {
                 const lb = i & -i;
                 const x1 = startX + (i - lb) * cellWidth;
                 const x2 = startX + i * cellWidth;
@@ -286,14 +290,14 @@ export class ArrayVisualizer extends BaseVisualizer {
                     .attr('stroke-width', 0.5)
                     .style('opacity', 0.85);
                 // 覆盖条右端标注 tree 值
-                if (n.tree[i] !== null && n.tree[i] !== undefined) {
+                if (node.tree[i] !== null && node.tree[i] !== undefined) {
                     bar.append('text')
                         .attr('x', x2 + 2)
                         .attr('y', rowY - 8)
                         .style('font-size', '10px')
                         .style('font-family', 'monospace')
                         .style('fill', '#666')
-                        .text(String(n.tree[i]));
+                        .text(String(node.tree[i]));
                 }
             }
         }
@@ -345,7 +349,6 @@ export class ArrayVisualizer extends BaseVisualizer {
     private renderPointers(info: ArrayGroupInfo): void {
         const { node, group, startX, startY, cellWidth, cellHeight } = info;
         group.selectAll('.pointer').remove();
-        const n: any = node;
 
         // 主行下方渲染指针
         const rowY = startY;
@@ -379,28 +382,28 @@ export class ArrayVisualizer extends BaseVisualizer {
         };
 
         if (node instanceof ArrayStackNode) {
-            addPointer(n.top, 'top', true);
+            addPointer(node.top, 'top', true);
         }
         if (node instanceof ArrayQueueNode) {
-            addPointer(n.head, 'head', false);
-            addPointer(n.tail, 'tail', false);
+            addPointer(node.head, 'head', false);
+            addPointer(node.tail, 'tail', false);
         }
         if (node instanceof QuickSortNode) {
-            addPointer(n.pivot, 'pivot', true);
+            addPointer(node.pivot, 'pivot', true);
         }
         if (node instanceof KMPNode) {
             // str 指针指向 str 行
-            if (n.strPtr !== null && n.strPtr !== undefined) {
-                const x = startX + n.strPtr * cellWidth + cellWidth / 2;
+            if (node.strPtr !== null && node.strPtr !== undefined) {
+                const x = startX + node.strPtr * cellWidth + cellWidth / 2;
                 const g = group.append('g').attr('class', 'pointer');
                 g.attr('transform', `translate(${x}, ${startY + cellHeight + 22})`);
                 g.append('text').attr('text-anchor', 'middle').style('font-size', '12px').style('fill', COLOR_POINTER).text('strPtr');
                 g.append('path').attr('d', 'M 0 -12 L -6 -20 L 6 -20 Z').attr('fill', COLOR_POINTER);
             }
             // template 指针指向 template 行
-            if (n.templatePtr !== null && n.templatePtr !== undefined) {
+            if (node.templatePtr !== null && node.templatePtr !== undefined) {
                 const rowY2 = startY + (cellHeight + ArrayVisualizer.ROW_GAP);
-                const x = startX + n.templatePtr * cellWidth + cellWidth / 2;
+                const x = startX + node.templatePtr * cellWidth + cellWidth / 2;
                 const g = group.append('g').attr('class', 'pointer');
                 g.attr('transform', `translate(${x}, ${rowY2 + cellHeight + 22})`);
                 g.append('text').attr('text-anchor', 'middle').style('font-size', '12px').style('fill', COLOR_POINTER).text('tPtr');
@@ -424,14 +427,14 @@ export class ArrayVisualizer extends BaseVisualizer {
         if (!info) return;
 
         // 找到对应单元格，高亮后刷新
-        const cell = info.group.selectAll('.cell.row-data').filter((_d: any, i: number) => i === idx);
+        const cell = info.group.selectAll<SVGGElement, string | number | null>('.cell.row-data').filter((_d: unknown, i: number) => i === idx);
         cell.select('.cell-rect')
             .transition()
             .duration(150)
             .attr('fill', COLOR_HIGHLIGHT)
             .transition()
             .duration(250)
-            .attr('fill', (_d: any) => this.cellFill(node, 'data', idx, false));
+            .attr('fill', () => this.cellFill(node, 'data', idx, false));
 
         cell.select('.cell-value')
             .text(node.data[idx] !== null && node.data[idx] !== undefined ? String(node.data[idx]) : '');
@@ -447,8 +450,8 @@ export class ArrayVisualizer extends BaseVisualizer {
         const info2 = this.arrayNodes.get(other.getId());
         if (!info1 || !info2) return;
 
-        const cell1 = info1.group.selectAll('.cell.row-data').filter((_d: any, i: number) => i === idx1);
-        const cell2 = info2.group.selectAll('.cell.row-data').filter((_d: any, i: number) => i === idx2);
+        const cell1 = info1.group.selectAll<SVGGElement, string | number | null>('.cell.row-data').filter((_d: unknown, i: number) => i === idx1);
+        const cell2 = info2.group.selectAll<SVGGElement, string | number | null>('.cell.row-data').filter((_d: unknown, i: number) => i === idx2);
         if (cell1.empty() || cell2.empty()) {
             this.renderGroup(info1);
             this.renderGroup(info2);
@@ -466,10 +469,21 @@ export class ArrayVisualizer extends BaseVisualizer {
         cell2.transition().duration(260).attr('transform', t1);
 
         // 动画结束后重渲染，恢复正确布局与颜色
-        setTimeout(() => {
+        const timer = setTimeout(() => {
+            this.pendingTimers = this.pendingTimers.filter(t => t !== timer);
             this.renderGroup(info1);
             this.renderGroup(info2);
         }, 320);
+        this.pendingTimers.push(timer);
+    }
+
+    destroy(): void {
+        for (const timer of this.pendingTimers) {
+            clearTimeout(timer);
+        }
+        this.pendingTimers = [];
+        this.arrayNodes.clear();
+        super.destroy();
     }
 
     /**

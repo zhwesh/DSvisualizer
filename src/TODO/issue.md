@@ -1,11 +1,11 @@
 - 审查对象：提交bf11342至d5b6630（Add files via upload系列提交）
 - 基准版本：`47bc0c0`（“test”提交）
-- 当前状态：仓库结构已按基准版本整理完毕——根目录下的旧快照副本（`algorithm/`、`datastucture/`、`node/`、`controller/`、`main.ts`、`style.css`、`App.vue`）已删除；`visualizer/` 已迁至 `src/visualizer/`，其 `App.vue`/`style.css` 已并入 `src/`；`README.md`、`vite.config.ts` 已还原；`dist/` 已取消跟踪；`src/test` 32 项测试仍全部通过。以下为问题记录与修改方案
+- 当前状态：仓库结构已按基准版本整理完毕——根目录下的旧快照副本（`algorithm/`、`datastructure/`、`node/`、`controller/`、`main.ts`、`style.css`、`App.vue`）已删除；`visualizer/` 已迁至 `src/visualizer/`，其 `App.vue`/`style.css` 已并入 `src/`；`README.md`、`vite.config.ts` 已还原；`dist/` 已取消跟踪；`src/test` 32 项测试仍全部通过。以下为问题记录与修改方案
 
 ## 一、存在的问题
 
 1. **目录结构混乱：复制算法层旧快照**
-   - 算法层旧快照被整包复制到仓库根目录（`algorithm/`、`datastucture/`、`node/`、`controller/`），与 `src/` 下的正式代码形成两份事实来源；旧快照缺少 `47bc0c0` 的既有修复（如节点删除清空、`clear` 同步化、并查集按集合大小合并、图的 `init()/_clear()`、`OpHook` 放宽等）。
+   - 算法层旧快照被整包复制到仓库根目录（`algorithm/`、`datastructure/`、`node/`、`controller/`），与 `src/` 下的正式代码形成两份事实来源；旧快照缺少 `47bc0c0` 的既有修复（如节点删除清空、`clear` 同步化、并查集按集合大小合并、图的 `init()/_clear()`、`OpHook` 放宽等）。
    - 新代码（`visualizer/`、`App.vue`、`main.ts`、`style.css`）同样放在根目录：入口 `index.html` 指向 `src/main.ts`，`npm run dev`/`npm run build` 无法加载到这些代码；`tsconfig.app.json` 只包含 `src/**`，这些代码从未经过类型检查，其提交的 `dist/` 无法由仓库状态复现。
 
 2. **引入取消机制，与原设计不符**

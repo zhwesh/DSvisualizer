@@ -56,7 +56,7 @@ node node_modules/typescript/bin/tsc src/test/RunTests.ts --outDir node_modules/
 node node_modules/.tmp/dstest/test/RunTests.js
 ```
 
-测试文件位于`src/test/`，目录结构与`src/datastucture`、`src/algorithm`一致，文件名为对应源文件加`Test`（如`SinglyLinkedListTest.ts`）。测试内容以边界用例和与标准/参考实现的随机对拍为主，运行后会输出每个测试的通过情况、数据量与统计信息。
+测试文件位于`src/test/`，目录结构与`src/datastructure`、`src/algorithm`一致，文件名为对应源文件加`Test`（如`SinglyLinkedListTest.ts`）。测试内容以边界用例和与标准/参考实现的随机对拍为主，运行后会输出每个测试的通过情况、数据量与统计信息。
 
 # 收录的数据结构与算法
 
