@@ -134,7 +134,7 @@ export class SortVisualizer extends BaseVisualizer {
                 .attr('y', yBase + 5)
                 .attr('text-anchor', 'middle')
                 .style('font-size', '17px')
-                .style('font-family', 'monospace')
+                .style('font-family', '"JetBrains Mono", SimHei, monospace')
                 .style('font-weight', 'bold')
                 .style('fill', COLOR_TEXT)
                 .text(v === null || v === undefined ? '' : String(v));

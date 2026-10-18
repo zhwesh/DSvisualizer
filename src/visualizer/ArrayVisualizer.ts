@@ -195,7 +195,19 @@ export class ArrayVisualizer extends BaseVisualizer {
             .attr('data-id', id);
 
         const rows = this.buildRows(node);
-        this.arrayNodes.set(id, { node, group, cellWidth, cellHeight, startX, startY, label: rows[0].label });
+        // 同类型数组第二次出现通常是扩容时创建的临时数组，标签显示为 tmp
+        const isTemp = [...this.arrayNodes.values()].some(
+            info => info.node !== node && info.node.constructor === node.constructor,
+        );
+        this.arrayNodes.set(id, {
+            node,
+            group,
+            cellWidth,
+            cellHeight,
+            startX,
+            startY,
+            label: isTemp ? 'tmp' : rows[0].label,
+        });
 
         this.renderGroup(this.arrayNodes.get(id)!);
         this.nextArrayY += ArrayVisualizer.ARRAY_GAP;
@@ -215,14 +227,15 @@ export class ArrayVisualizer extends BaseVisualizer {
         const startX = Math.max(80, (ArrayVisualizer.CANVAS_W - maxLen * cellWidth) / 2);
         info.startX = startX;   // 写回，供指针/覆盖条渲染保持同一起点
 
-        // 1. 数组标签
+        // 1. 数组标签：右对齐到单元格左侧，长标签也不会压住第一格
         group.selectAll('.array-label').remove();
         group.append('text')
             .attr('class', 'array-label')
-            .attr('x', startX - 52)
+            .attr('x', startX - 12)
             .attr('y', startY + cellHeight / 2 + 5)
+            .attr('text-anchor', 'end')
             .style('font-size', '14px')
-            .style('font-family', 'monospace')
+            .style('font-family', '"JetBrains Mono", SimHei, monospace')
             .style('fill', '#555')
             .text(info.label);
 
@@ -253,7 +266,7 @@ export class ArrayVisualizer extends BaseVisualizer {
                     .attr('y', cellHeight / 2 + 5)
                     .attr('text-anchor', 'middle')
                     .style('font-size', '15px')
-                    .style('font-family', 'monospace')
+                    .style('font-family', '"JetBrains Mono", SimHei, monospace')
                     .text((d: unknown) => d !== null && d !== undefined ? String(d) : '');
             });
 
@@ -294,7 +307,7 @@ export class ArrayVisualizer extends BaseVisualizer {
                         .attr('x', x2 + 2)
                         .attr('y', rowY - 8)
                         .style('font-size', '10px')
-                        .style('font-family', 'monospace')
+                        .style('font-family', '"JetBrains Mono", SimHei, monospace')
                         .style('fill', '#666')
                         .text(String(node.tree[i]));
                 }
@@ -316,7 +329,9 @@ export class ArrayVisualizer extends BaseVisualizer {
             this.svg.attr('viewBox', '0 0 1200 600');
             return;
         }
-        const PAD_X = 28;
+        // 左侧留出数组标签（template 等较长标签）的宽度，右侧只留少量边距
+        const PAD_LEFT = 96;
+        const PAD_RIGHT = 28;
         const PAD_Y = 60;   // 容纳上下两侧的指针名与共享箭头
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         this.arrayNodes.forEach(info => {
@@ -330,14 +345,14 @@ export class ArrayVisualizer extends BaseVisualizer {
             minY = Math.min(minY, info.startY);
             maxY = Math.max(maxY, info.startY + totalH);
         });
-        const contentW = (maxX - minX) + 2 * PAD_X;
+        const contentW = (maxX - minX) + PAD_LEFT + PAD_RIGHT;
         const contentH = (maxY - minY) + 2 * PAD_Y;
         let w = Math.max(contentW, 340);
         const h = Math.max(contentH, 160);
         // 保持水平居中：视图不小于内容宽度时，把数组水平置于视图中央
-        let x0 = minX - PAD_X;
+        let x0 = minX - PAD_LEFT;
         if (w > contentW) {
-            x0 = minX - PAD_X - (w - contentW) / 2;
+            x0 -= (w - contentW) / 2;
         }
         this.svg.attr('viewBox', `${x0} ${minY - PAD_Y} ${w} ${h}`);
     }

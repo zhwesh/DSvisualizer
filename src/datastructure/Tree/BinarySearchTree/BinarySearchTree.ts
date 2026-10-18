@@ -132,7 +132,9 @@ export class BinarySearchTree {
             }
             const toLeft = val < x.val!;
 
+            x._set_visited(true);
             await stepController.wait();
+            x._set_visited(false);
             if (toLeft) {
                 messageController.message(
                     val + " 小于 " + x.val + "，向左查找",

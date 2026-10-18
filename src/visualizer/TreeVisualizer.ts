@@ -40,11 +40,11 @@ interface TrieLayoutItem {
 // ---------- 配色 ----------
 const COLOR_RED = '#e74c3c';
 const COLOR_BLACK = '#2c3e50';
-const COLOR_GREEN = '#2ecc71';
 const COLOR_WHITE = '#ffffff';
 const COLOR_TEXT = '#333333';
 const COLOR_FLASH = '#f39c12';
 const COLOR_AUX = '#7f8c8d';
+const COLOR_VISIT_RING = '#2b6cb0';
 
 /**
  * 二叉树可视化器
@@ -72,8 +72,8 @@ export class TreeVisualizer extends BaseVisualizer {
     private static readonly V_GAP = 60;
     private static readonly START_X = 560;
     private static readonly START_Y = 90;
-    private static readonly TRIE_H_GAP = 32;
-    private static readonly TRIE_V_GAP = 50;
+    private static readonly TRIE_H_GAP = 52;
+    private static readonly TRIE_V_GAP = 76;
     // 画布尺寸（与 viewBox 一致），用于树整体居中
     private static readonly CANVAS_W = 1200;
     private static readonly CANVAS_H = 600;
@@ -323,12 +323,18 @@ export class TreeVisualizer extends BaseVisualizer {
     }
 
     /**
-     * 节点填充颜色（查找/遍历高亮 / 红黑树颜色 / 默认）
+     * 当前正在比较/经过/处理的节点用外圈标记，不改变节点自身颜色
+     */
+    private nodeVisited(node: BinaryTreeNode<any>): boolean {
+        if (node instanceof BinarySearchTreeNode) return node.visited;
+        if (node instanceof BinaryTreeTraversalNode) return node.visited;
+        return false;
+    }
+
+    /**
+     * 节点填充颜色（红黑树颜色 / 默认）
      */
     private nodeFill(node: BinaryTreeNode<any>): string {
-        // 查找/遍历高亮：当前节点绿色（优先于红黑树颜色）
-        if (node instanceof BinarySearchTreeNode && node.visited) return COLOR_GREEN;
-        if (node instanceof BinaryTreeTraversalNode && node.visited) return COLOR_GREEN;
         if (node instanceof RedBlackTreeNode) {
             return node.color === RedBlackTree_Red ? COLOR_RED : COLOR_BLACK;
         }
@@ -339,8 +345,6 @@ export class TreeVisualizer extends BaseVisualizer {
      * 节点文字颜色
      */
     private nodeTextFill(node: BinaryTreeNode<any>): string {
-        if (node instanceof BinarySearchTreeNode && node.visited) return COLOR_WHITE;
-        if (node instanceof BinaryTreeTraversalNode && node.visited) return COLOR_WHITE;
         if (node instanceof RedBlackTreeNode) return COLOR_WHITE;
         return COLOR_TEXT;
     }
@@ -380,6 +384,15 @@ export class TreeVisualizer extends BaseVisualizer {
             .style('opacity', 1);
 
         enterGroups.append('circle')
+            .attr('class', 'node-visit-ring')
+            .attr('r', TreeVisualizer.NODE_RADIUS + 5)
+            .attr('fill', 'none')
+            .attr('stroke', COLOR_VISIT_RING)
+            .attr('stroke-width', 3)
+            .style('opacity', 0)
+            .style('pointer-events', 'none');
+
+        enterGroups.append('circle')
             .attr('r', TreeVisualizer.NODE_RADIUS)
             .attr('stroke', '#666')
             .attr('stroke-width', 1.5);
@@ -390,19 +403,22 @@ export class TreeVisualizer extends BaseVisualizer {
             .attr('dy', '0.35em')
             .style('font-size', '14px')
             .style('font-weight', 'bold')
-            .style('font-family', 'monospace');
+            .style('font-family', '"JetBrains Mono", SimHei, monospace');
 
         enterGroups.append('text')
             .attr('class', 'node-aux')
             .attr('text-anchor', 'middle')
             .attr('y', -(TreeVisualizer.NODE_RADIUS + 6))
             .style('font-size', '10px')
-            .style('font-family', 'monospace');
+            .style('font-family', '"JetBrains Mono", SimHei, monospace');
 
         // 3. 统一更新（enter与update都更新文本/配色/附加标签）
         const merged = enterGroups.merge(nodeGroups);
 
-        merged.select('circle')
+        merged.select('.node-visit-ring')
+            .style('opacity', (d: BinaryLayoutItem) => this.nodeVisited(d.node) ? 1 : 0);
+
+        merged.select('circle:not(.node-visit-ring)')
             .attr('fill', (d: BinaryLayoutItem) => this.nodeFill(d.node));
 
         merged.select('.node-value')
@@ -541,38 +557,44 @@ export class TreeVisualizer extends BaseVisualizer {
     private renderTrie(): void {
         const items = this.collectTrie();
         const posMap = new Map<number, { x: number; y: number }>();
-
-        // 按层计算位置
-        const depthGroups = new Map<number, typeof items>();
-        items.forEach(item => {
-            if (!depthGroups.has(item.depth)) depthGroups.set(item.depth, []);
-            depthGroups.get(item.depth)!.push(item);
-        });
-        depthGroups.forEach((group, depth) => {
-            group.forEach((item, i) => {
-                const count = group.length;
-                const x = TreeVisualizer.START_X + (i - (count - 1) / 2) * TreeVisualizer.TRIE_H_GAP;
-                const y = TreeVisualizer.START_Y + depth * TreeVisualizer.TRIE_V_GAP;
-                posMap.set(item.node.getId(), { x, y });
-            });
-        });
-
-        // 整棵树居中于画布中心
-        if (posMap.size > 0) {
-            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-            posMap.forEach(p => {
-                minX = Math.min(minX, p.x - TreeVisualizer.NODE_RADIUS);
-                maxX = Math.max(maxX, p.x + TreeVisualizer.NODE_RADIUS);
-                minY = Math.min(minY, p.y - TreeVisualizer.NODE_RADIUS);
-                maxY = Math.max(maxY, p.y + TreeVisualizer.NODE_RADIUS);
-            });
-            const offsetX = TreeVisualizer.CANVAS_W / 2 - (minX + maxX) / 2;
-            const offsetY = TreeVisualizer.CANVAS_H / 2 - (minY + maxY) / 2;
-            posMap.forEach((p) => {
-                p.x += offsetX;
-                p.y += offsetY;
-            });
+        if (items.length === 0) {
+            this.renderAnswerArray();
+            this.fitViewBox([]);
+            return;
         }
+
+        // 按父子关系做整齐的树布局：同一父节点的子树互不重叠，分支不会被挤在同一条竖线上
+        const childrenMap = new Map<number, TrieLayoutItem[]>();
+        items.forEach(item => {
+            if (!item.parent) return;
+            const parentId = item.parent.getId();
+            const siblings = childrenMap.get(parentId);
+            if (siblings) siblings.push(item);
+            else childrenMap.set(parentId, [item]);
+        });
+        const hierarchy = d3.hierarchy<TrieLayoutItem>(
+            items[0],
+            item => childrenMap.get(item.node.getId()),
+        );
+        const treeLayout = d3.tree<TrieLayoutItem>()
+            .nodeSize([TreeVisualizer.TRIE_H_GAP, TreeVisualizer.TRIE_V_GAP])
+            .separation((a, b) => a.parent === b.parent ? 1 : 1.2);
+        treeLayout(hierarchy);
+
+        const nodes = hierarchy.descendants();
+        let minX = Infinity, maxX = -Infinity;
+        nodes.forEach(node => {
+            const x = node.x ?? 0;
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+        });
+        const offsetX = TreeVisualizer.CANVAS_W / 2 - (minX + maxX) / 2;
+        nodes.forEach(node => {
+            posMap.set(node.data.node.getId(), {
+                x: (node.x ?? 0) + offsetX,
+                y: TreeVisualizer.START_Y + (node.y ?? 0),
+            });
+        });
 
         // 1. 边（带字母标签，同样置于节点下层）
         const layer = this.edgeLayer();
@@ -584,6 +606,7 @@ export class TreeVisualizer extends BaseVisualizer {
             if (!p || !c) return;
             const midX = (p.x + c.x) / 2;
             const midY = (p.y + c.y) / 2;
+            const labelOnLeft = c.x < p.x - 1;
             layer.append('line')
                 .attr('class', 'trie-edge')
                 .attr('x1', p.x)
@@ -593,13 +616,18 @@ export class TreeVisualizer extends BaseVisualizer {
                 .attr('stroke', '#999')
                 .attr('stroke-width', 1.5);
             layer.append('text')
-                .attr('class', 'trie-edge')
-                .attr('x', midX)
-                .attr('y', midY - 4)
-                .attr('text-anchor', 'middle')
-                .style('font-size', '11px')
-                .style('font-family', 'monospace')
-                .style('fill', '#7f8c8d')
+                .attr('class', 'trie-edge-label')
+                .attr('x', midX + (labelOnLeft ? -9 : 9))
+                .attr('y', midY + 4)
+                .attr('text-anchor', labelOnLeft ? 'end' : 'start')
+                .style('font-size', '12px')
+                .style('font-family', '"JetBrains Mono", SimHei, monospace')
+                .style('font-weight', 'bold')
+                .style('fill', '#5f6b7a')
+                .style('paint-order', 'stroke')
+                .style('stroke', '#fafafa')
+                .style('stroke-width', '4px')
+                .style('stroke-linejoin', 'round')
                 .text(item.letter);
         });
 
@@ -629,7 +657,7 @@ export class TreeVisualizer extends BaseVisualizer {
             .attr('dy', '0.35em')
             .style('font-size', '12px')
             .style('font-weight', 'bold')
-            .style('font-family', 'monospace')
+            .style('font-family', '"JetBrains Mono", SimHei, monospace')
             .style('fill', COLOR_TEXT);
 
         const merged = enterGroups.merge(nodeGroups);
@@ -685,7 +713,7 @@ export class TreeVisualizer extends BaseVisualizer {
             .attr('x', startX - 70)
             .attr('y', y + cellH / 2 + 5)
             .style('font-size', '13px')
-            .style('font-family', 'monospace')
+            .style('font-family', '"JetBrains Mono", SimHei, monospace')
             .style('fill', '#555')
             .text('遍历结果');
 
@@ -704,7 +732,7 @@ export class TreeVisualizer extends BaseVisualizer {
                 .attr('y', cellH / 2 + 5)
                 .attr('text-anchor', 'middle')
                 .style('font-size', '14px')
-                .style('font-family', 'monospace')
+                .style('font-family', '"JetBrains Mono", SimHei, monospace')
                 .text(v !== null ? String(v) : '');
             cg.transition().delay(i * 60).duration(200).style('opacity', 1);
         });

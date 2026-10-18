@@ -8,8 +8,9 @@ export interface ControlInputDef {
     key: string;
     label?: string;
     placeholder?: string;
-    type?: 'number' | 'text';
+    type?: 'number' | 'text' | 'textarea';
     required?: boolean;
+    random?: () => string;
 }
 
 export interface ControlButtonDef {
@@ -38,6 +39,8 @@ const values = reactive<Record<string, string>>({});
 const activeButton = ref<ControlButtonDef | null>(null);
 const dialogValues = reactive<Record<string, string>>({});
 const dialogError = ref('');
+// 只有按下遮罩本身时才允许点击遮罩关闭；从对话框内拖选文字到外面不应关闭
+const backdropPressed = ref(false);
 
 const resetValues = (): void => {
     for (const key of Object.keys(values)) {
@@ -83,13 +86,33 @@ const openDialog = (button: ControlButtonDef): void => {
     dialogError.value = '';
     activeButton.value = button;
     nextTick(() => {
-        const input = document.querySelector<HTMLInputElement>('.dialog-field input');
+        const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+            '.dialog-field input, .dialog-field textarea',
+        );
         input?.focus();
     });
 };
 
 const closeDialog = (): void => {
     activeButton.value = null;
+    dialogError.value = '';
+    backdropPressed.value = false;
+};
+
+const onBackdropPointerDown = (event: PointerEvent): void => {
+    backdropPressed.value = event.target === event.currentTarget;
+};
+
+const onBackdropClick = (event: MouseEvent): void => {
+    if (backdropPressed.value && event.target === event.currentTarget) {
+        closeDialog();
+    }
+    backdropPressed.value = false;
+};
+
+const fillRandom = (param: ControlInputDef): void => {
+    if (!param.random) return;
+    dialogValues[param.key] = param.random();
     dialogError.value = '';
 };
 
@@ -106,7 +129,8 @@ const submitDialog = (): void => {
             dialogError.value = `请填写${name}`;
             return;
         }
-        if (param.type !== 'text' && value !== '' && !Number.isFinite(Number(value))) {
+        const isNumeric = param.type === undefined || param.type === 'number';
+        if (isNumeric && value !== '' && !Number.isFinite(Number(value))) {
             dialogError.value = `${name}必须为数字`;
             return;
         }
@@ -152,7 +176,8 @@ const submitDialog = (): void => {
             <div
                 v-if="activeButton"
                 class="dialog-overlay"
-                @click.self="closeDialog"
+                @pointerdown="onBackdropPointerDown"
+                @click="onBackdropClick"
                 @keydown.esc.stop.prevent="closeDialog"
             >
                 <form class="dialog" @submit.prevent="submitDialog">
@@ -164,12 +189,31 @@ const submitDialog = (): void => {
                         class="dialog-field"
                     >
                         <span>{{ param.label ?? param.placeholder ?? param.key }}</span>
-                        <input
-                            v-model="dialogValues[param.key]"
-                            :type="param.type ?? 'number'"
-                            :placeholder="param.placeholder"
-                            :autofocus="i === 0"
-                        />
+                        <div class="dialog-input-row">
+                            <textarea
+                                v-if="param.type === 'textarea'"
+                                v-model="dialogValues[param.key]"
+                                :placeholder="param.placeholder"
+                                rows="6"
+                            ></textarea>
+                            <input
+                                v-else
+                                v-model="dialogValues[param.key]"
+                                :type="param.type ?? 'number'"
+                                :placeholder="param.placeholder"
+                                :autofocus="i === 0"
+                            />
+                            <button
+                                v-if="param.random"
+                                type="button"
+                                class="dialog-random"
+                                title="随机生成"
+                                @click="fillRandom(param)"
+                            >
+                                <AppIcon name="refresh" :size="13" />
+                                随机
+                            </button>
+                        </div>
                     </label>
 
                     <p v-if="dialogError" class="dialog-error">{{ dialogError }}</p>
@@ -187,12 +231,11 @@ const submitDialog = (): void => {
 <style scoped>
 .control-panel {
     width: 240px;
-    min-width: 240px;
+    min-width: 0;
     height: 100%;
     padding: 14px 14px 24px;
     overflow-y: auto;
     background: #f7f9fc;
-    border-left: 1px solid #e0e4ea;
 }
 
 .panel-title {
@@ -279,7 +322,16 @@ const submitDialog = (): void => {
     color: #4a5568;
 }
 
-.dialog-field input {
+.dialog-input-row {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.dialog-field input,
+.dialog-field textarea {
+    flex: 1;
+    min-width: 0;
     padding: 8px 10px;
     border: 1px solid #d5dde7;
     border-radius: 5px;
@@ -289,9 +341,38 @@ const submitDialog = (): void => {
     outline: none;
 }
 
-.dialog-field input:focus {
+.dialog-field textarea {
+    resize: vertical;
+    min-height: 110px;
+    font-family: inherit;
+    line-height: 1.45;
+}
+
+.dialog-field input:focus,
+.dialog-field textarea:focus {
     border-color: #2b6cb0;
     box-shadow: 0 0 0 2px rgba(43, 108, 176, 0.12);
+}
+
+.dialog-random {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 9px;
+    border: 1px solid #cfd8e3;
+    border-radius: 5px;
+    background: #f7f9fc;
+    color: #4a5568;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.dialog-random:hover {
+    background: #eaf2fb;
+    border-color: #2b6cb0;
+    color: #2b5f9e;
 }
 
 .dialog-error {

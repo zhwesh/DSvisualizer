@@ -17,9 +17,9 @@ export class BinarySearchTreeNode<T extends BinarySearchTreeNode<T>>
     }
 
     /**
-     * 设置节点是否在查找中高亮
+     * 设置节点是否为当前高亮节点
      * 
-     * 动画效果：visited为真时节点标记为绿色，否则为无色
+     * 动画效果：visited为真时在节点外圈显示高亮环，否则取消外圈
      * 
      * @param visited 是否高亮
      */
@@ -30,7 +30,7 @@ export class BinarySearchTreeNode<T extends BinarySearchTreeNode<T>>
     /************************************************** */
 
     public val: number | null;
-    public visited: boolean;    // 查找高亮标记
+    public visited: boolean;    // 当前节点高亮标记（外圈）
 
     constructor(
         val: number | null,

@@ -138,7 +138,6 @@ export class LinkedList {
         messageController.message("链接节点", MessageType.INFO);
         node._set_next(q);
 
-        await stepController.wait();
         if (p != null) {
             p._set_next(node);
         } else {
@@ -168,7 +167,7 @@ export class LinkedList {
         }
 
         await stepController.wait();
-        messageController.message("删除节点", MessageType.INFO);
+        messageController.message("链接节点", MessageType.INFO);
         if (p != null) {
             p._set_next(q.next);
         } else {
@@ -176,6 +175,7 @@ export class LinkedList {
         }
 
         await stepController.wait();
+        messageController.message("删除节点", MessageType.INFO);
         q._delete();
         --this.sz;
 

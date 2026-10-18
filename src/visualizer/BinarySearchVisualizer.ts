@@ -128,7 +128,7 @@ export class BinarySearchVisualizer extends BaseVisualizer {
             .attr('class', 'cell-value')
             .attr('text-anchor', 'middle')
             .attr('y', cellH / 2 + 5)
-            .style('font-family', 'monospace');
+            .style('font-family', '"JetBrains Mono", SimHei, monospace');
 
         // enter与update统一更新：位置、宽度、字号、范围底色与mid高亮
         const merged = enterCells.merge(cells);

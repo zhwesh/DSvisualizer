@@ -122,7 +122,7 @@ export class KMPVisualizer extends BaseVisualizer {
                 .attr('y', y + (SortCellH - 4) / 2 + 5)
                 .attr('text-anchor', 'middle')
                 .style('font-size', '18px')
-                .style('font-family', 'monospace')
+                .style('font-family', '"JetBrains Mono", SimHei, monospace')
                 .style('font-weight', 'bold')
                 .style('fill', isPtr ? COLOR_PTR : COLOR_TEXT)
                 .text(s[i]);
@@ -162,7 +162,7 @@ export class KMPVisualizer extends BaseVisualizer {
                 .attr('y', SortRowNextY + (SortCellH - 4) / 2 + 5)
                 .attr('text-anchor', 'middle')
                 .style('font-size', '16px')
-                .style('font-family', 'monospace')
+                .style('font-family', '"JetBrains Mono", SimHei, monospace')
                 .style('font-weight', 'bold')
                 .style('fill', COLOR_TEXT)
                 .text(next[i] === null || next[i] === undefined ? '' : String(next[i]));

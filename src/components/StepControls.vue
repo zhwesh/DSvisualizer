@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import AppIcon from './AppIcon.vue';
 
-defineProps<{
-    currentOp: string;
-}>();
-
 const emit = defineEmits<{
     (e: 'play'): void;
     (e: 'fast'): void;
@@ -15,7 +11,6 @@ const emit = defineEmits<{
 
 <template>
     <div class="step-controls">
-        <span class="op-label">当前操作：{{ currentOp }}</span>
         <div class="control-row">
             <button class="control-btn" title="播放" aria-label="播放" @click="emit('play')">
                 <AppIcon name="play" :size="15" />
@@ -46,12 +41,6 @@ const emit = defineEmits<{
     border: 1px solid #e0e4ea;
     border-radius: 6px;
     z-index: 3;
-}
-
-.op-label {
-    font-size: 14px;
-    color: #4a5568;
-    white-space: nowrap;
 }
 
 .control-row {

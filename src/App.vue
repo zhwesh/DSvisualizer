@@ -9,7 +9,7 @@ import { DataNode } from './node/DataNode';
 import { VisualizerManager, VisualizerType } from './visualizer/VisualizerManager';
 import { SortVisualizer } from './visualizer/SortVisualizer';
 import { LinkedListVisualizer } from './visualizer/LinkedListVisualizer';
-import { createStructure, getGraphEdges, getStructureTitle, type DSInstance } from './visualizer/registry';
+import { createGraphStructure, createStructure, getGraphEdges, getStructureTitle, type DSInstance } from './visualizer/registry';
 // 组件
 import MenuSidebar, { type MenuNode } from './components/MenuSidebar.vue';
 import StatsPanel from './components/StatsPanel.vue';
@@ -88,10 +88,263 @@ const visualizerManager = VisualizerManager.getInstance();
 // ---------- 页面状�?----------
 const currentMenu = ref<VisualizerType>(VisualizerType.ARRAY_LIST);
 const currentOp = ref<string>(OP.RESTART);
+const currentResult = ref<string | null>(null);
 const stats = ref({ size: 0 });
 const messages = ref<UiMessage[]>([]);
 const bsVars = ref({ left: 0, right: 9, mid: 4, target: 0 });
 const svgRef = ref<SVGSVGElement | null>(null);
+const appRef = ref<HTMLElement | null>(null);
+const canvasViewportRef = ref<HTMLDivElement | null>(null);
+
+// ---------- 可拖拽面板尺寸 ----------
+const readStoredSize = (key: string, fallback: number): number => {
+    try {
+        const raw = window.localStorage.getItem(key);
+        if (raw === null) return fallback;
+        const value = Number(raw);
+        return Number.isFinite(value) ? value : fallback;
+    } catch {
+        return fallback;
+    }
+};
+
+const writeStoredSize = (key: string, value: number): void => {
+    try {
+        window.localStorage.setItem(key, String(Math.round(value)));
+    } catch {
+        // 隐私模式等场景下忽略存储失败
+    }
+};
+
+const SIDEBAR_MIN = 160;
+const SIDEBAR_MAX = 460;
+const CONTROL_MIN = 200;
+const CONTROL_MAX = 520;
+const MESSAGE_MIN = 72;
+
+const sidebarWidth = ref(readStoredSize('dsvisualizer.layout.sidebarWidth', 220));
+const controlWidth = ref(readStoredSize('dsvisualizer.layout.controlWidth', 240));
+const messageHeight = ref(readStoredSize('dsvisualizer.layout.messageHeight', 180));
+
+const sidebarStyle = computed(() => ({
+    width: sidebarWidth.value + 'px',
+    flex: `0 0 ${sidebarWidth.value}px`,
+}));
+const controlStyle = computed(() => ({
+    width: controlWidth.value + 'px',
+    flex: `0 0 ${controlWidth.value}px`,
+}));
+const messageStyle = computed(() => ({
+    height: messageHeight.value + 'px',
+    flex: `0 0 ${messageHeight.value}px`,
+}));
+
+type ResizeTarget = 'sidebar' | 'control' | 'messages';
+
+interface ResizeState {
+    target: ResizeTarget;
+    startX: number;
+    startY: number;
+    startSize: number;
+}
+
+let resizeState: ResizeState | null = null;
+const resizingTarget = ref<ResizeTarget | null>(null);
+
+const resizeRange = (target: ResizeTarget): [number, number] => {
+    const width = appRef.value?.clientWidth ?? window.innerWidth;
+    const height = appRef.value?.clientHeight ?? window.innerHeight;
+    if (target === 'sidebar') {
+        return [SIDEBAR_MIN, Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, width * 0.45))];
+    }
+    if (target === 'control') {
+        return [CONTROL_MIN, Math.max(CONTROL_MIN, Math.min(CONTROL_MAX, width * 0.5))];
+    }
+    return [MESSAGE_MIN, Math.max(MESSAGE_MIN, height - 220)];
+};
+
+const clampSize = (target: ResizeTarget, value: number): number => {
+    const [min, max] = resizeRange(target);
+    return Math.min(Math.max(value, min), max);
+};
+
+const beginResize = (target: ResizeTarget, event: PointerEvent): void => {
+    event.preventDefault();
+    const element = event.currentTarget as HTMLElement;
+    element.setPointerCapture(event.pointerId);
+    resizeState = {
+        target,
+        startX: event.clientX,
+        startY: event.clientY,
+        startSize: target === 'sidebar' ? sidebarWidth.value
+            : target === 'control' ? controlWidth.value
+                : messageHeight.value,
+    };
+    resizingTarget.value = target;
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = target === 'messages' ? 'row-resize' : 'col-resize';
+};
+
+const moveResize = (event: PointerEvent): void => {
+    const state = resizeState;
+    if (!state) return;
+
+    let next = state.startSize;
+    if (state.target === 'sidebar') {
+        next += event.clientX - state.startX;
+    } else if (state.target === 'control') {
+        next -= event.clientX - state.startX;
+    } else {
+        next -= event.clientY - state.startY;
+    }
+    next = clampSize(state.target, next);
+
+    if (state.target === 'sidebar') {
+        sidebarWidth.value = next;
+    } else if (state.target === 'control') {
+        controlWidth.value = next;
+    } else {
+        messageHeight.value = next;
+    }
+};
+
+const endResize = (event: PointerEvent): void => {
+    if (!resizeState) return;
+    const element = event.currentTarget as HTMLElement;
+    if (element.hasPointerCapture(event.pointerId)) {
+        element.releasePointerCapture(event.pointerId);
+    }
+    writeStoredSize('dsvisualizer.layout.sidebarWidth', sidebarWidth.value);
+    writeStoredSize('dsvisualizer.layout.controlWidth', controlWidth.value);
+    writeStoredSize('dsvisualizer.layout.messageHeight', messageHeight.value);
+    resizeState = null;
+    resizingTarget.value = null;
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+};
+
+// ---------- 画布缩放/平移 ----------
+const CANVAS_MIN_SCALE = 0.25;
+const CANVAS_MAX_SCALE = 6;
+
+const canvasScale = ref(1);
+const canvasPanX = ref(0);
+const canvasPanY = ref(0);
+const isCanvasPanning = ref(false);
+const canvasTransform = computed(
+    () => `translate(${canvasPanX.value}px, ${canvasPanY.value}px) scale(${canvasScale.value})`,
+);
+const canvasZoomLabel = computed(() => Math.round(canvasScale.value * 100) + '%');
+
+interface PanState {
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+}
+
+let panState: PanState | null = null;
+
+const clampCanvasPan = (): void => {
+    const viewport = canvasViewportRef.value;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const scaledWidth = rect.width * canvasScale.value;
+    const scaledHeight = rect.height * canvasScale.value;
+    const clamp = (value: number, min: number, max: number): number =>
+        Math.min(Math.max(value, min), max);
+
+    if (scaledWidth >= rect.width) {
+        canvasPanX.value = clamp(canvasPanX.value, rect.width - scaledWidth, 0);
+    } else {
+        canvasPanX.value = clamp(canvasPanX.value, 0, rect.width - scaledWidth);
+    }
+    if (scaledHeight >= rect.height) {
+        canvasPanY.value = clamp(canvasPanY.value, rect.height - scaledHeight, 0);
+    } else {
+        canvasPanY.value = clamp(canvasPanY.value, 0, rect.height - scaledHeight);
+    }
+};
+
+const zoomCanvasAt = (anchorX: number, anchorY: number, factor: number): void => {
+    const previous = canvasScale.value;
+    const next = Math.min(Math.max(previous * factor, CANVAS_MIN_SCALE), CANVAS_MAX_SCALE);
+    if (next === previous) return;
+
+    const ratio = next / previous;
+    canvasPanX.value = anchorX - ratio * (anchorX - canvasPanX.value);
+    canvasPanY.value = anchorY - ratio * (anchorY - canvasPanY.value);
+    canvasScale.value = next;
+    clampCanvasPan();
+};
+
+const resetCanvasView = (): void => {
+    canvasScale.value = 1;
+    canvasPanX.value = 0;
+    canvasPanY.value = 0;
+};
+
+const handleCanvasWheel = (event: WheelEvent): void => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+
+    const viewport = canvasViewportRef.value;
+    if (!viewport) return;
+    const rect = viewport.getBoundingClientRect();
+
+    let delta = event.deltaY;
+    if (event.deltaMode === 1) delta *= 16;
+    else if (event.deltaMode === 2) delta *= rect.height;
+
+    zoomCanvasAt(
+        event.clientX - rect.left,
+        event.clientY - rect.top,
+        Math.exp(-delta * 0.0015),
+    );
+};
+
+const startCanvasPan = (event: PointerEvent): void => {
+    if (event.button !== 0 && event.button !== 1) return;
+    if (event.button === 0 && canvasScale.value <= 1.001) return;
+
+    const viewport = canvasViewportRef.value;
+    if (!viewport) return;
+    event.preventDefault();
+    viewport.setPointerCapture(event.pointerId);
+    panState = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: canvasPanX.value,
+        originY: canvasPanY.value,
+    };
+    isCanvasPanning.value = true;
+};
+
+const moveCanvasPan = (event: PointerEvent): void => {
+    if (!panState || event.pointerId !== panState.pointerId) return;
+    canvasPanX.value = panState.originX + event.clientX - panState.startX;
+    canvasPanY.value = panState.originY + event.clientY - panState.startY;
+    clampCanvasPan();
+};
+
+const endCanvasPan = (event: PointerEvent): void => {
+    if (!panState) return;
+    const viewport = canvasViewportRef.value;
+    if (viewport?.hasPointerCapture(event.pointerId)) {
+        viewport.releasePointerCapture(event.pointerId);
+    }
+    panState = null;
+    isCanvasPanning.value = false;
+};
+
+const handleWindowResize = (): void => {
+    sidebarWidth.value = clampSize('sidebar', sidebarWidth.value);
+    controlWidth.value = clampSize('control', controlWidth.value);
+    messageHeight.value = clampSize('messages', messageHeight.value);
+    clampCanvasPan();
+};
 
 // 当前数据结构实例（类型定义见可视化注册表�?
 let currentDS: DSInstance | null = null;
@@ -108,6 +361,24 @@ let graphNodeCnt = 6;
 const sortData = ref<number[]>([]);
 // 树插入自动编号（�?开始，切换菜单重置�?
 let treeInsertCounter = 1;
+// 各图算法当前使用的边集（用户自定义后保留，重新开始不会覆盖）
+const graphEdgesByKey = new Map<VisualizerType, number[][]>();
+
+const isGraphAlgorithm = (key: VisualizerType): boolean =>
+    key === VisualizerType.DIJKSTRA || key === VisualizerType.FLOYD ||
+    key === VisualizerType.PRIM || key === VisualizerType.KRUSKAL;
+
+const isDirectedGraph = (key: VisualizerType): boolean =>
+    key === VisualizerType.DIJKSTRA || key === VisualizerType.FLOYD;
+
+const graphEdgesFor = (key: VisualizerType): number[][] =>
+    graphEdgesByKey.get(key) ?? getGraphEdges(key) ?? [];
+
+const createGraphDS = (key: VisualizerType): DSInstance => {
+    const edges = graphEdgesFor(key);
+    graphNodeCnt = edges.reduce((max, edge) => Math.max(max, edge[0] + 1, edge[1] + 1), 0);
+    return createGraphStructure(key, edges);
+};
 
 // ---------- 链表等按下标操作时的输入解析 ----------
 /**
@@ -177,23 +448,178 @@ const validateTrieWord = (raw: string): string | null => {
     return /^[a-z]+$/.test(raw.trim()) ? null : '请输入仅包含小写字母的字符串';
 };
 
-const valParam = numberParam('val', '数值');
-const idxParam = numberParam('idx', '索引');
+// ---------- 随机输入辅助 ----------
+const randomInt = (min: number, max: number): number =>
+    min + Math.floor(Math.random() * (max - min + 1));
+
+const randomNumberList = (count?: number): string => {
+    const n = count ?? randomInt(5, 10);
+    return Array.from({ length: n }, () => randomInt(1, 99)).join(',');
+};
+
+const randomLowerWord = (minLength = 3, maxLength = 6): string => {
+    const n = randomInt(minLength, maxLength);
+    let word = '';
+    for (let i = 0; i < n; ++i) {
+        word += String.fromCharCode(97 + randomInt(0, 25));
+    }
+    return word;
+};
+
+const randomPatternString = (minLength: number, maxLength: number): string => {
+    const n = randomInt(minLength, maxLength);
+    let text = '';
+    const chars = 'abc';
+    for (let i = 0; i < n; ++i) {
+        text += chars[randomInt(0, chars.length - 1)];
+    }
+    return text;
+};
+
+interface GraphParseResult {
+    edges: number[][];
+    error: string | null;
+}
+
+const parseGraphEdges = (raw: string, undirected: boolean): GraphParseResult => {
+    const lines = raw.split(/\r?\n|;/).map(line => line.trim()).filter(Boolean);
+    if (lines.length === 0) {
+        return { edges: [], error: '请至少输入一条边，每行格式：起点 终点 权值' };
+    }
+
+    const edges: number[][] = [];
+    const seen = new Set<string>();
+    const usedNodes = new Set<number>();
+    for (let i = 0; i < lines.length; ++i) {
+        const parts = lines[i].split(/[\s,，]+/).filter(Boolean);
+        if (parts.length !== 3) {
+            return { edges: [], error: `第 ${i + 1} 行格式错误，应为：起点 终点 权值` };
+        }
+        const [u, v, w] = parts.map(Number);
+        if (!Number.isInteger(u) || !Number.isInteger(v) || !Number.isFinite(w)) {
+            return { edges: [], error: `第 ${i + 1} 行：节点必须为整数，权值必须为数字` };
+        }
+        if (u < 0 || v < 0) {
+            return { edges: [], error: `第 ${i + 1} 行节点编号不能为负数` };
+        }
+        if (w < 0) {
+            return { edges: [], error: `第 ${i + 1} 行边权不能为负数` };
+        }
+        if (u === v) {
+            return { edges: [], error: `第 ${i + 1} 行不允许自环` };
+        }
+        const key = undirected
+            ? `${Math.min(u, v)},${Math.max(u, v)}`
+            : `${u},${v}`;
+        if (seen.has(key)) {
+            return { edges: [], error: `第 ${i + 1} 行与前文存在重复边` };
+        }
+        seen.add(key);
+        usedNodes.add(u);
+        usedNodes.add(v);
+        edges.push([u, v, w]);
+    }
+
+    const maxNode = Math.max(...usedNodes);
+    for (let i = 0; i <= maxNode; ++i) {
+        if (!usedNodes.has(i)) {
+            return { edges: [], error: `节点编号必须从 0 开始连续，缺少节点 ${i}` };
+        }
+    }
+    return { edges, error: null };
+};
+
+const formatGraphEdges = (edges: number[][]): string =>
+    edges.map(edge => edge.join(' ')).join('\n');
+
+const randomGraphText = (key: VisualizerType): string => {
+    const undirected = !isDirectedGraph(key);
+    const n = randomInt(5, 7);
+    const edges: number[][] = [];
+    const seen = new Set<string>();
+    const addEdge = (u: number, v: number, w: number): void => {
+        if (u === v) return;
+        const edgeKey = undirected
+            ? `${Math.min(u, v)},${Math.max(u, v)}`
+            : `${u},${v}`;
+        if (seen.has(edgeKey)) return;
+        seen.add(edgeKey);
+        edges.push([u, v, w]);
+    };
+
+    // 先生成一棵生成树，保证图连通；再补少量额外的边
+    for (let i = 1; i < n; ++i) {
+        const parent = randomInt(0, i - 1);
+        if (undirected) addEdge(i, parent, randomInt(1, 20));
+        else addEdge(parent, i, randomInt(1, 20));
+    }
+    const extra = randomInt(n - 2, n + 2);
+    for (let i = 0; i < extra; ++i) {
+        addEdge(randomInt(0, n - 1), randomInt(0, n - 1), randomInt(1, 20));
+    }
+    return formatGraphEdges(edges);
+};
+
+const valParam: ControlInputDef = {
+    ...numberParam('val', '数值'),
+    random: () => String(randomInt(1, 99)),
+};
+const idxParam: ControlInputDef = {
+    ...numberParam('idx', '索引'),
+    random: () => String(randomInt(0, Math.max(0, (currentListSize() ?? 1) - 1))),
+};
 const optionalIdxParam: ControlInputDef = {
     ...idxParam,
     placeholder: '可留空，默认末尾',
     required: false,
 };
-const dataParam = textParam('data', '数组', '如 1,2,3');
-const targetParam = numberParam('val', '查找目标');
-const sortParam = textParam('sortInput', '数组', '如 5,3,8,1,9');
-const kmpStrParam = textParam('str', '主串', '如 ababcabab');
-const kmpTemplateParam = textParam('template', '模式串', '如 abab');
-const segLParam = numberParam('l', '左端点');
-const segRParam = numberParam('r', '右端点');
-const segValParam = numberParam('val', '增量');
-const segDataParam = textParam('data', '初始数组', '如 1,2,3');
-const wordParam = textParam('word', '字符串（小写字母）');
+const dataParam: ControlInputDef = {
+    ...textParam('data', '数组', '如 1,2,3'),
+    random: () => randomNumberList(),
+};
+const targetParam: ControlInputDef = {
+    ...numberParam('val', '查找目标'),
+    random: () => String(randomInt(1, Math.max(1, bsDataLen))),
+};
+const sortParam: ControlInputDef = {
+    ...textParam('sortInput', '数组', '如 5,3,8,1,9'),
+    random: () => randomNumberList(),
+};
+const kmpStrParam: ControlInputDef = {
+    ...textParam('str', '主串', '如 ababcabab'),
+    random: () => randomPatternString(8, 12),
+};
+const kmpTemplateParam: ControlInputDef = {
+    ...textParam('template', '模式串', '如 abab'),
+    random: () => randomPatternString(2, 4),
+};
+const segLParam: ControlInputDef = {
+    ...numberParam('l', '左端点'),
+    random: () => String(randomInt(0, Math.max(0, segDataLen - 1))),
+};
+const segRParam: ControlInputDef = {
+    ...numberParam('r', '右端点'),
+    random: () => String(randomInt(0, Math.max(0, segDataLen - 1))),
+};
+const segValParam: ControlInputDef = {
+    ...numberParam('val', '增量'),
+    random: () => String(randomInt(1, 20)),
+};
+const segDataParam: ControlInputDef = {
+    ...textParam('data', '初始数组', '如 1,2,3'),
+    random: () => randomNumberList(),
+};
+const wordParam: ControlInputDef = {
+    ...textParam('word', '字符串（小写字母）'),
+    random: () => randomLowerWord(),
+};
+const graphEdgesParam: ControlInputDef = {
+    key: 'edges',
+    label: '图的边（每行：起点 终点 权值）',
+    placeholder: '0 1 2\n0 2 5\n1 2 1',
+    type: 'textarea',
+    random: () => randomGraphText(currentMenu.value),
+};
 
 /**
  * 高亮（闪烁）链表中第idx个数据节点，用于“查�?修改”动�?
@@ -243,6 +669,7 @@ const runOp = (op: () => Promise<void>): void => {
         // 上一次操作即使出错也不能污染串行队列，否则后面所有操作都会被静默跳过
         .catch(() => { /* 上一次异常已由该操作�?catch 记录 */ })
         .then(async () => {
+            currentResult.value = null;
             try {
                 await op();
             } catch (error) {
@@ -376,7 +803,7 @@ const menuTitle = (key: VisualizerType): string => getStructureTitle(key);
 // ---------- 数据创建（实例来自注册表，这里只维护页面级规模状态） ----------
 const createDS = (key: VisualizerType): void => {
     treeInsertCounter = 1;
-    currentDS = createStructure(key);
+    currentDS = isGraphAlgorithm(key) ? createGraphDS(key) : createStructure(key);
 
     switch (key) {
         case VisualizerType.SEGMENT_TREE:
@@ -397,9 +824,17 @@ const createDS = (key: VisualizerType): void => {
         case VisualizerType.DIJKSTRA:
         case VisualizerType.FLOYD:
         case VisualizerType.PRIM:
-        case VisualizerType.KRUSKAL: {
-            const edges = getGraphEdges(key) ?? [];
-            graphNodeCnt = edges.reduce((m, e) => Math.max(m, e[0] + 1, e[1] + 1), 0);
+        case VisualizerType.KRUSKAL:
+            // graphNodeCnt 已由 createGraphDS 按当前边集更新
+            break;
+        case VisualizerType.BUBBLE_SORT:
+        case VisualizerType.INSERTION_SORT:
+        case VisualizerType.MERGE_SORT:
+        case VisualizerType.QUICK_SORT: {
+            const vis = visualizerManager.getCurrentVisualizer();
+            if (vis instanceof SortVisualizer && sortData.value.length > 0) {
+                vis.preview([...sortData.value]);
+            }
             break;
         }
         case VisualizerType.KMP:
@@ -456,9 +891,11 @@ const selectMenu = async (key: VisualizerType): Promise<void> => {
     await forceFinishPending();
     currentMenu.value = key;
     currentOp.value = OP.RESTART;
+    currentResult.value = null;
     clearMessages();
     DataNode.restart();
     visualizerManager.switchVisualizer(key);
+    resetCanvasView();
     createDS(key);
     updateStats();
     addMessage(`已切换到「${menuTitle(key)}」`, MessageType.INFO);
@@ -581,7 +1018,7 @@ const handleGet = (v: Record<string, string>): void => {
             addMessage(`开始二分查找 target=${getVal}`, MessageType.INFO);
             try {
                 const result = await (ds as BinarySearch).find(getVal);
-                addMessage(`查找结果：小于等于 ${getVal} 的最后一个元素下标 = ${result}`, MessageType.SUCCESS);
+                currentResult.value = String(result);
             } catch (error) {
                 addOperationError('二分查找', error);
             }
@@ -596,7 +1033,7 @@ const handleGet = (v: Record<string, string>): void => {
             addMessage(`在${menuTitle(currentMenu.value)}中查找节点 ${getVal}`, MessageType.INFO);
             try {
                 const ok = await (ds as BinarySearchTree | AVLTree | RedBlackTree).contains(getVal);
-                addMessage(ok ? `节点 ${getVal} 存在` : `节点 ${getVal} 不存在`, MessageType.SUCCESS);
+                currentResult.value = String(ok);
             } catch (error) {
                 addOperationError('查找操作', error);
             }
@@ -613,11 +1050,10 @@ const handleGet = (v: Record<string, string>): void => {
             addMessage(`查找索引 ${idx} 处的元素`, MessageType.INFO);
             try {
                 const val = await list.get(idx);
+                currentResult.value = val === null ? 'null' : String(val);
                 highlightListIndex(idx);
                 if (val === null) {
                     addMessage(`索引 ${idx} 处不存在元素`, MessageType.WARNING);
-                } else {
-                    addMessage(`索引 ${idx} 处的元素 = ${val}`, MessageType.SUCCESS);
                 }
             } catch (error) {
                 addOperationError('查找操作', error);
@@ -632,7 +1068,7 @@ const handleGet = (v: Record<string, string>): void => {
         addMessage(`查询索引 ${getIdx} 处的元素`, MessageType.INFO);
         try {
             const val = await (ds as ArrayList).get(getIdx);
-            addMessage(`索引 ${getIdx} 处的元素 = ${val}`, MessageType.SUCCESS);
+            currentResult.value = val === null || val === undefined ? 'null' : String(val);
         } catch (error) {
             addOperationError('查找操作', error);
         }
@@ -716,7 +1152,7 @@ const handleStackTop = (): void => {
         addMessage('查看栈顶', MessageType.INFO);
         try {
             const v = await (ds as ArrayStack | LinkedStack).top();
-            addMessage(`栈顶元素 = ${v}`, MessageType.SUCCESS);
+            currentResult.value = v === null ? 'null' : String(v);
         } catch (error) {
             addOperationError('查看栈顶', error);
         }
@@ -763,7 +1199,7 @@ const handleQueueFront = (): void => {
         addMessage('查看队首', MessageType.INFO);
         try {
             const v = await (ds as ArrayQueue | LinkedQueue).top();
-            addMessage(`队首元素 = ${v}`, MessageType.SUCCESS);
+            currentResult.value = v === null ? 'null' : String(v);
         } catch (error) {
             addOperationError('查看队首', error);
         }
@@ -841,7 +1277,7 @@ const handleDequeGetFirst = (): void => {
         addMessage('查看队首', MessageType.INFO);
         try {
             const v = await (ds as ArrayDeque | LinkedDeque).getFirst();
-            addMessage(`队首元素 = ${v}`, MessageType.SUCCESS);
+            currentResult.value = v === null ? 'null' : String(v);
         } catch (error) {
             addOperationError('查看队首', error);
         }
@@ -856,7 +1292,7 @@ const handleDequeGetLast = (): void => {
         addMessage('查看队尾', MessageType.INFO);
         try {
             const v = await (ds as ArrayDeque | LinkedDeque).getLast();
-            addMessage(`队尾元素 = ${v}`, MessageType.SUCCESS);
+            currentResult.value = v === null ? 'null' : String(v);
         } catch (error) {
             addOperationError('查看队尾', error);
         }
@@ -892,7 +1328,7 @@ const handleSegQuery = (v: Record<string, string>): void => {
         addMessage(`查询区间 [${l}, ${r}] 的和`, MessageType.INFO);
         try {
             const res = await (ds as SegmentTree).query(l, r);
-            addMessage(`区间 [${l}, ${r}] 的和 = ${res}`, MessageType.SUCCESS);
+            currentResult.value = String(res);
         } catch (error) {
             addOperationError('区间查询', error);
         }
@@ -960,7 +1396,7 @@ const handleTrieFind = (v: Record<string, string>): void => {
         addMessage(`查找字符串「${word}」`, MessageType.INFO);
         try {
             const cnt = await (ds as Trie).find(word);
-            addMessage(cnt > 0 ? `字符串「${word}」存在，数量 = ${cnt}` : `字符串「${word}」不存在`, MessageType.SUCCESS);
+            currentResult.value = String(cnt);
         } catch (error) {
             addOperationError('查找操作', error);
         }
@@ -977,7 +1413,7 @@ const handleTriePrefix = (v: Record<string, string>): void => {
         addMessage(`查询前缀「${word}」的字符串数量`, MessageType.INFO);
         try {
             const cnt = await (ds as Trie).prefix(word);
-            addMessage(`前缀「${word}」的字符串数量 = ${cnt}`, MessageType.SUCCESS);
+            currentResult.value = String(cnt);
         } catch (error) {
             addOperationError('前缀查询', error);
         }
@@ -1021,6 +1457,31 @@ const handleGraphRun = (): void => {
         stepController.setStatus(StepStatus.PAUSE_OR_FREE);
     });
 };
+const handleGraphSet = (v: Record<string, string>): void => {
+    const key = currentMenu.value;
+    if (!isGraphAlgorithm(key)) return;
+    const result = parseGraphEdges(v.edges ?? '', !isDirectedGraph(key));
+    if (result.error) {
+        addMessage(result.error, MessageType.WARNING);
+        return;
+    }
+
+    runOp(async () => {
+        currentOp.value = '设置图';
+        graphEdgesByKey.set(key, result.edges);
+        DataNode.restart();
+        visualizerManager.switchVisualizer(key);
+        resetCanvasView();
+        currentDS = createGraphDS(key);
+        updateStats();
+        addMessage(
+            `已设置自定义图：${graphNodeCnt} 个节点，${result.edges.length} 条边`,
+            MessageType.SUCCESS,
+        );
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
 const handleGraphReset = (): void => {
     runOp(async () => {
         currentOp.value = OP.RESTART;
@@ -1028,37 +1489,54 @@ const handleGraphReset = (): void => {
         DataNode.restart();
         visualizerManager.switchVisualizer(key);
         createDS(key);
+        resetCanvasView();
+        updateStats();
         addMessage('已重新开始', MessageType.SUCCESS);
     });
 };
 
 // ---------- 排序 ----------
-const genSortArray = (): Record<string, string> | void => {
-    const cnt = 6 + Math.floor(Math.random() * 5);
-    const arr: number[] = [];
-    for (let i = 0; i < cnt; ++i) arr.push(1 + Math.floor(Math.random() * 99));
-    sortData.value = arr;
-    const vis = visualizerManager.getCurrentVisualizer();
-    if (vis instanceof SortVisualizer) vis.preview(arr);
-    addMessage(`已生成随机数组：${arr.join(', ')}`, MessageType.INFO);
-    return { sortInput: arr.join(',') };
-};
-
-const handleSortRun = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const raw = (v.sortInput ?? '').trim();
-    const data = raw ? raw.split(/[,，\s]+/).map(s => Number(s)).filter(n => !isNaN(n)) : [];
-    if (data.length === 0) {
+const handleSortSet = (v: Record<string, string>): void => {
+    const data = parseNumberList(v.sortInput ?? '');
+    if (data === null) {
         addMessage('请输入有效数组（逗号分隔的数字）', MessageType.WARNING);
         return;
     }
-    sortData.value = data;
+
+    const key = currentMenu.value;
+    runOp(async () => {
+        currentOp.value = '设置数组';
+        sortData.value = [...data];
+        DataNode.restart();
+        visualizerManager.switchVisualizer(key);
+        resetCanvasView();
+        currentDS = createStructure(key);
+        const vis = visualizerManager.getCurrentVisualizer();
+        if (vis instanceof SortVisualizer) vis.preview([...data]);
+        updateStats();
+        addMessage(`数组已设置为：[${data.join(', ')}]`, MessageType.SUCCESS);
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleSortRun = (v: Record<string, string>): void => {
+    const data = parseNumberList(v.sortInput ?? '');
+    if (data === null) {
+        addMessage('请输入有效数组（逗号分隔的数字）', MessageType.WARNING);
+        return;
+    }
+
+    const key = currentMenu.value;
     runOp(async () => {
         currentOp.value = OP.SORT_RUN;
+        sortData.value = [...data];
+        DataNode.restart();
+        visualizerManager.switchVisualizer(key);
+        resetCanvasView();
+        currentDS = createStructure(key);
         addMessage(`开始对 [${data.join(', ')}] 排序`, MessageType.INFO);
         try {
-            const key = currentMenu.value;
+            const ds = currentDS;
             if (key === VisualizerType.BUBBLE_SORT) await (ds as BubbleSort).sort(data);
             else if (key === VisualizerType.INSERTION_SORT) await (ds as InsertionSort).sort(data);
             else if (key === VisualizerType.MERGE_SORT) await (ds as MergeSort).sort(data);
@@ -1077,9 +1555,9 @@ const handleSortReset = (): void => {
         DataNode.restart();
         visualizerManager.switchVisualizer(key);
         createDS(key);
+        resetCanvasView();
         updateStats();
         addMessage('已重新开始', MessageType.SUCCESS);
-        genSortArray();
     });
 };
 
@@ -1122,7 +1600,7 @@ const handleKMPSearch = (v: Record<string, string>): void => {
         addMessage('开始 KMP 匹配', MessageType.INFO);
         try {
             const pos = await (ds as KMP).search();
-            addMessage(pos !== null && pos !== undefined ? `匹配成功，出现位置 = ${pos}` : '未匹配到模式串', MessageType.SUCCESS);
+            currentResult.value = pos === null || pos === undefined ? 'null' : String(pos);
         } catch (error) {
             addOperationError('KMP匹配', error);
         }
@@ -1229,7 +1707,7 @@ const handleSetData = (v: Record<string, string>): void => {
     }
     data.sort((a, b) => a - b);
     runOp(async () => {
-        currentOp.value = OP.RESTART;
+        currentOp.value = '设置数组';
         bsDataLen = data.length;
         bsVars.value = { left: 0, right: bsDataLen - 1, mid: Math.floor((bsDataLen - 1) / 2), target: bsVars.value.target };
         DataNode.restart();
@@ -1246,16 +1724,12 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
     switch (key) {
         case VisualizerType.BINARY_SEARCH:
             return [{
-                hint: '查找使用升序数组；设置数据会按升序重建并重新开始',
-                inputs: [
-                    { key: 'val', placeholder: 'target（查找目标）' },
-                    { key: 'data', placeholder: '升序数组，如 1,2,3', type: 'text' },
-                ],
+                hint: '查找使用升序数组；设置数组会按升序重建',
+                inputs: [],
                 buttons: [
                     { label: '查找数据', icon: 'search', params: [targetParam], onClick: handleGet },
-                    { label: '重新开始', icon: 'rotate', onClick: handleClear },
                     {
-                        label: '设置数据并重新开始',
+                        label: '设置数组',
                         icon: 'settings',
                         params: [dataParam],
                         validate: (v) => validateNumberList(v.data ?? ''),
@@ -1279,9 +1753,22 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
         case VisualizerType.PRIM:
         case VisualizerType.KRUSKAL:
             return [{
-                hint: '使用默认示例图，点击开始执行',
+                hint: `${isDirectedGraph(currentMenu.value) ? '有向图' : '无向图'}：每行“起点 终点 权值”，节点从 0 开始连续编号；设置后“重新开始”仍会保留该图`,
                 inputs: [],
                 buttons: [
+                    {
+                        label: '设置图',
+                        icon: 'settings',
+                        params: [graphEdgesParam],
+                        getInitial: () => ({
+                            edges: formatGraphEdges(graphEdgesFor(currentMenu.value)),
+                        }),
+                        validate: (values) => parseGraphEdges(
+                            values.edges ?? '',
+                            !isDirectedGraph(currentMenu.value),
+                        ).error,
+                        onClick: handleGraphSet,
+                    },
                     { label: '开始执行', icon: 'play', onClick: handleGraphRun },
                     { label: '重新开始', icon: 'rotate', onClick: handleGraphReset },
                 ],
@@ -1291,10 +1778,17 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
         case VisualizerType.MERGE_SORT:
         case VisualizerType.QUICK_SORT:
             return [{
-                inputs: [{ key: 'sortInput', placeholder: '数组，如 5,3,8,1,9', type: 'text' }],
-                init: () => genSortArray(),
+                hint: '先设置数组再开始排序，输入框中可点击“随机”生成一组数据',
+                inputs: [],
                 buttons: [
-                    { label: '生成随机数组', icon: 'refresh', onClick: () => genSortArray() },
+                    {
+                        label: '设置数组',
+                        icon: 'settings',
+                        params: [sortParam],
+                        getInitial: () => ({ sortInput: sortData.value.join(',') }),
+                        validate: (v) => validateNumberList(v.sortInput ?? ''),
+                        onClick: handleSortSet,
+                    },
                     {
                         label: '开始排序',
                         icon: 'play',
@@ -1530,6 +2024,10 @@ onMounted(async () => {
         visualizerManager.init(svgRef.value);
     }
 
+    canvasViewportRef.value?.addEventListener('wheel', handleCanvasWheel, { passive: false });
+    window.addEventListener('resize', handleWindowResize);
+    handleWindowResize();
+
     // 二分查找：由可视化器在指针变化时回调，避免轮�?
     visualizerManager.setBinarySearchPointerListener((left, right, mid) => {
         bsVars.value.left = left;
@@ -1541,14 +2039,33 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+    canvasViewportRef.value?.removeEventListener('wheel', handleCanvasWheel);
+    window.removeEventListener('resize', handleWindowResize);
     visualizerManager.setBinarySearchPointerListener(null);
 });
 </script>
 
 <template>
-    <div class="app-container">
+    <div ref="appRef" class="app-container">
         <!-- 左侧：树状菜�?-->
-        <MenuSidebar class="sidebar" :nodes="menuTree" :current-key="currentMenu" @select="selectMenu" />
+        <MenuSidebar
+            class="sidebar"
+            :style="sidebarStyle"
+            :nodes="menuTree"
+            :current-key="currentMenu"
+            @select="selectMenu"
+        />
+        <div
+            class="splitter splitter-v"
+            :class="{ active: resizingTarget === 'sidebar' }"
+            role="separator"
+            aria-orientation="vertical"
+            title="拖拽调整菜单宽度"
+            @pointerdown="beginResize('sidebar', $event)"
+            @pointermove="moveResize"
+            @pointerup="endResize"
+            @pointercancel="endResize"
+        ></div>
 
         <!-- 中间：主区域 -->
         <main class="main-area">
@@ -1560,22 +2077,65 @@ onBeforeUnmount(() => {
                     :is-binary-search="currentMenu === VisualizerType.BINARY_SEARCH"
                     :bs-vars="bsVars"
                     :size="stats.size"
+                    :current-op="currentOp"
+                    :result="currentResult"
                 />
                 <StepControls
                     v-if="opRunning"
-                    :current-op="currentOp"
                     @play="handlePlay"
                     @fast="handleFast"
                     @pause="handlePause"
                     @step="handleStep"
                 />
-                <svg ref="svgRef" class="canvas-svg"></svg>
+                <div
+                    ref="canvasViewportRef"
+                    class="canvas-viewport"
+                    :class="{ 'can-pan': canvasScale > 1.001, 'is-panning': isCanvasPanning }"
+                    title="Ctrl + 滚轮缩放；放大后可拖拽平移；双击复位"
+                    @pointerdown="startCanvasPan"
+                    @pointermove="moveCanvasPan"
+                    @pointerup="endCanvasPan"
+                    @pointercancel="endCanvasPan"
+                    @dblclick="resetCanvasView"
+                >
+                    <svg ref="svgRef" class="canvas-svg" :style="{ transform: canvasTransform }"></svg>
+                </div>
+                <button
+                    class="canvas-zoom"
+                    type="button"
+                    title="点击复位画布缩放"
+                    @click="resetCanvasView"
+                >
+                    {{ canvasZoomLabel }}
+                </button>
             </div>
-            <MessagePanel :messages="messages" @clear="clearMessages" />
+            <div
+                class="splitter splitter-h"
+                :class="{ active: resizingTarget === 'messages' }"
+                role="separator"
+                aria-orientation="horizontal"
+                title="拖拽调整提示信息高度"
+                @pointerdown="beginResize('messages', $event)"
+                @pointermove="moveResize"
+                @pointerup="endResize"
+                @pointercancel="endResize"
+            ></div>
+            <MessagePanel :style="messageStyle" :messages="messages" @clear="clearMessages" />
         </main>
+        <div
+            class="splitter splitter-v"
+            :class="{ active: resizingTarget === 'control' }"
+            role="separator"
+            aria-orientation="vertical"
+            title="拖拽调整操作台宽度"
+            @pointerdown="beginResize('control', $event)"
+            @pointermove="moveResize"
+            @pointerup="endResize"
+            @pointercancel="endResize"
+        ></div>
 
         <!-- 右侧：操作台 -->
-        <ControlPanel :groups="controlGroups" :current-menu="currentMenu" />
+        <ControlPanel :style="controlStyle" :groups="controlGroups" :current-menu="currentMenu" />
     </div>
 </template>
 
@@ -1591,7 +2151,14 @@ body,
     width: 100%;
     height: 100%;
     overflow: hidden;
-    font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+    font-family: 'Times New Roman', SimHei, '黑体', 'Microsoft YaHei', sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+    font-family: inherit;
 }
 </style>
 
@@ -1604,12 +2171,46 @@ body,
 }
 .sidebar {
     width: 220px;
-    min-width: 220px;
+    min-width: 0;
     height: 100%;
     overflow-y: auto;
     background: #f7f9fc;
-    border-right: 1px solid #e0e4ea;
     padding: 12px 0;
+}
+.splitter {
+    position: relative;
+    z-index: 10;
+    flex: 0 0 5px;
+    background: transparent;
+    touch-action: none;
+}
+.splitter-v {
+    cursor: col-resize;
+}
+.splitter-h {
+    cursor: row-resize;
+}
+.splitter::after {
+    content: '';
+    position: absolute;
+    background: #e0e4ea;
+    transition: background 0.15s;
+}
+.splitter-v::after {
+    top: 0;
+    bottom: 0;
+    left: 2px;
+    width: 1px;
+}
+.splitter-h::after {
+    left: 0;
+    right: 0;
+    top: 2px;
+    height: 1px;
+}
+.splitter:hover::after,
+.splitter.active::after {
+    background: #2b6cb0;
 }
 .main-area {
     flex: 1;
@@ -1618,27 +2219,63 @@ body,
     min-width: 0;
 }
 .top-header {
-    padding: 10px 18px;
+    padding: 12px 18px;
     border-bottom: 1px solid #eee;
     background: #fff;
+    text-align: center;
 }
 .page-title {
-    font-size: 18px;
-    color: #222;
+    font-size: 24px;
+    font-weight: 700;
+    color: #000;
 }
 .canvas-container {
     position: relative;
     flex: 1;
     min-height: 0;
+    overflow: hidden;
     background: #fafafa;
+}
+.canvas-viewport {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #fafafa;
+    touch-action: none;
+}
+.canvas-viewport.can-pan {
+    cursor: grab;
+}
+.canvas-viewport.is-panning {
+    cursor: grabbing;
 }
 .canvas-svg {
     width: 100%;
     height: 100%;
     display: block;
+    overflow: visible;
+    transform-origin: 0 0;
+    will-change: transform;
+    user-select: none;
 }
-.control-panel {
-    width: 240px;
-    min-width: 240px;
+.canvas-zoom {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    z-index: 3;
+    min-width: 54px;
+    padding: 5px 8px;
+    border: 1px solid #cfd8e3;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.95);
+    font-size: 13px;
+    color: #4a5568;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+}
+.canvas-zoom:hover {
+    background: #eaf2fb;
+    border-color: #2b6cb0;
+    color: #2b5f9e;
 }
 </style>

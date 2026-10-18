@@ -5,11 +5,18 @@
 }
 
 body {
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Times New Roman', SimHei, '黑体', 'Microsoft YaHei', sans-serif;
   background: #f5f6fa;
   color: #2d3436;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
 }
 
 #app {

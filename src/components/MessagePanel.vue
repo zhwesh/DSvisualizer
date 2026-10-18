@@ -70,7 +70,6 @@ const messageIcon = (type: number): string => {
 .message-panel {
     flex: 0 0 180px;
     height: 180px;
-    border-top: 1px solid #eef0f3;
     background: #fff;
     display: flex;
     flex-direction: column;

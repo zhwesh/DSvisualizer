@@ -222,6 +222,26 @@ export function createStructure(type: VisualizerTypeValue): DSInstance {
     return REGISTRY[type].create();
 }
 
+/**
+ * 使用自定义边集创建图算法实例
+ * @param type 图算法类型
+ * @param edges 边集，每条边为 [u, v, w]
+ */
+export function createGraphStructure(type: VisualizerTypeValue, edges: number[][]): DSInstance {
+    switch (type) {
+        case VisualizerType.DIJKSTRA:
+            return create(dijkstra, edges);
+        case VisualizerType.FLOYD:
+            return create(floyd, edges);
+        case VisualizerType.PRIM:
+            return create(prim, edges);
+        case VisualizerType.KRUSKAL:
+            return create(kruskal, edges);
+        default:
+            throw new Error('不是图算法类型');
+    }
+}
+
 export function getGraphEdges(type: VisualizerTypeValue): number[][] | null {
     return GRAPH_EDGES[type] ?? null;
 }

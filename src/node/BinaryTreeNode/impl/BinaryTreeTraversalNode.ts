@@ -4,7 +4,7 @@ import { BinaryTreeNode } from "../BinaryTreeNode";
  * 二叉树的遍历算法节点
  * 
  * 可视化层动画效果：
- * visited属性代表是否已被访问，若是则节点标记为绿色，否则为无色
+ * visited属性代表是否已被访问，若是则在节点外圈显示高亮环
  */
 export class BinaryTreeTraversalNode extends BinaryTreeNode<BinaryTreeTraversalNode> {
     /**
@@ -19,7 +19,7 @@ export class BinaryTreeTraversalNode extends BinaryTreeNode<BinaryTreeTraversalN
     /**
      * 设置节点是否已被访问
      * 
-     * 动画效果：设置visited并变色
+     * 动画效果：设置visited并显示/取消节点外圈
      * 
      * @param visited 节点是否已被访问
      */

@@ -199,38 +199,87 @@ export class LinkedListVisualizer extends BaseVisualizer {
             return result;
         }
 
-        // 先统计节点总数，使整条链表水平居中（节点宽 + 节点间隙）
-        let count = 0;
-        let c = start;
-        while (c && c !== header && count < 200) { count++; c = c.next; }
-        if (this.mode === 'sentinel' && header) count += 1;   // 哨兵头
+        // 循环链表/队列/双端队列：用环形布局体现首尾相连
+        if (this.mode === 'sentinel' && header) {
+            const ring: { node: LinkedNodeView; isSentinel: boolean }[] = [
+                { node: header, isSentinel: true },
+            ];
+            let curr = start;
+            const maxIter = 200;
+            while (curr && curr !== header && ring.length < maxIter) {
+                ring.push({ node: curr, isSentinel: false });
+                curr = curr.next;
+            }
+
+            // 刚创建、尚未链接进链表的节点也要显示，否则只能在插入完成后才看到
+            const used = new Set(ring.map(item => item.node.getId()));
+            this.nodes.forEach(node => {
+                if (!used.has(node.getId())) {
+                    ring.push({ node, isSentinel: false });
+                }
+            });
+
+            const total = ring.length;
+            if (total <= 2) {
+                // 节点太少时环形会退化成一条重叠的线，仍按直线排列
+                const startX = Math.max(60, (LinkedListVisualizer.CANVAS_W - total * step) / 2);
+                ring.forEach((item, i) => {
+                    result.push({
+                        node: item.node,
+                        x: startX + i * step,
+                        y: LinkedListVisualizer.START_Y,
+                        isSentinel: item.isSentinel,
+                    });
+                });
+                return result;
+            }
+
+            const cx = LinkedListVisualizer.CANVAS_W / 2;
+            const cy = 290;
+            const radius = Math.min(300, Math.max(150, total * 34));
+            ring.forEach((item, i) => {
+                // header 固定在最左侧，其余节点顺时针环绕
+                const angle = Math.PI + (2 * Math.PI * i) / total;
+                result.push({
+                    node: item.node,
+                    x: cx + radius * Math.cos(angle) - LinkedListVisualizer.NODE_WIDTH / 2,
+                    y: cy + radius * Math.sin(angle) - LinkedListVisualizer.NODE_HEIGHT / 2,
+                    isSentinel: item.isSentinel,
+                });
+            });
+            return result;
+        }
+
+        // 先收集链表节点，再补上刚创建但尚未链接的节点
+        const chain: LinkedNodeView[] = [];
+        let c: LinkedNodeView | null = start;
+        const maxIter = 200;
+        while (c && c !== header && chain.length < maxIter) {
+            chain.push(c);
+            c = c.next;
+        }
+        const used = new Set(chain.map(node => node.getId()));
+        this.nodes.forEach(node => {
+            if (!used.has(node.getId())) {
+                chain.push(node);
+            }
+        });
+
+        // 统计节点总数，使整条链表水平居中（节点宽 + 节点间隙）
+        const count = chain.length;
         const totalW = count > 0
             ? count * LinkedListVisualizer.NODE_WIDTH + (count - 1) * LinkedListVisualizer.NODE_GAP
             : 0;
         const startX = Math.max(60, (LinkedListVisualizer.CANVAS_W - totalW) / 2);
 
-        if (this.mode === 'sentinel' && header) {
+        chain.forEach((node, index) => {
             result.push({
-                node: header,
-                x: startX,
-                y: LinkedListVisualizer.START_Y,
-                isSentinel: true,
-            });
-        }
-
-        let curr = start;
-        let index = this.mode === 'sentinel' ? 1 : 0;
-        const maxIter = 200;
-        while (curr && curr !== header && index < maxIter) {
-            result.push({
-                node: curr,
+                node,
                 x: startX + index * step,
                 y: LinkedListVisualizer.START_Y,
                 isSentinel: false,
             });
-            curr = curr.next;
-            index++;
-        }
+        });
         return result;
     }
 
@@ -250,8 +299,8 @@ export class LinkedListVisualizer extends BaseVisualizer {
         const enterGroups = nodeGroups.enter()
             .append('g')
             .attr('class', (d: LayoutItem) => d.isSentinel ? 'linked-node sentinel-node' : 'linked-node')
-            .attr('transform', (d: LayoutItem) => `translate(${d.x}, ${d.y})`);
-            // 不做 opacity 淡入：避免与位置过渡同名 transition 互斥导致节点透明
+            .attr('transform', (d: LayoutItem) => `translate(${d.x}, ${d.y})`)
+            .style('opacity', 0);
 
         // 节点方框（单个矩形，同数组格子样式：方框 + 居中数字）
         enterGroups.append('rect')
@@ -269,8 +318,13 @@ export class LinkedListVisualizer extends BaseVisualizer {
             .attr('y', LinkedListVisualizer.NODE_HEIGHT / 2 + 7)
             .attr('text-anchor', 'middle')
             .style('font-size', '20px')
-            .style('font-family', 'monospace')
+            .style('font-family', '"JetBrains Mono", SimHei, monospace')
             .style('font-weight', 'bold');
+
+        // 新节点淡入浮现；使用独立命名过渡，避免和位置移动过渡互相取消
+        enterGroups.transition('node-enter')
+            .duration(300)
+            .style('opacity', 1);
 
         // 统一更新（enter与update都要更新class/id/值/哨兵虚线）
         const merged = enterGroups.merge(nodeGroups);
@@ -360,6 +414,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
 
         const posById = new Map<number, LayoutItem>();
         layout.forEach(item => posById.set(item.node.getId(), item));
+        const ring = this.mode === 'sentinel' && layout.length > 2;
 
         // 后继箭头：直接读节点自己的next指针，而不是假设渲染顺序相邻
         layout.forEach(item => {
@@ -367,9 +422,10 @@ export class LinkedListVisualizer extends BaseVisualizer {
             if (!next) return;
             const target = posById.get(next.getId());
             if (!target) return;
-            // 目标在左侧（循环链表末节点回指哨兵）或不在同一行时，用弧线绕开节点
-            const curved = target.x <= item.x || Math.abs(target.y - item.y) > 1;
-            this.drawArrow(layer, item, target, curved, '#666', 2);
+            // 环形布局已在几何上保证首尾相邻，不再需要跨越大半张画布的弧线
+            const curved = !ring && (target.x <= item.x || Math.abs(target.y - item.y) > 1);
+            const offset = ring && item.node instanceof DoublyLinkedListNode ? 6 : 0;
+            this.drawArrow(layer, item, target, curved, '#666', 2, ring, offset);
         });
 
         // 双向链表：last 回指箭头
@@ -379,6 +435,10 @@ export class LinkedListVisualizer extends BaseVisualizer {
             if (!last) return;
             const target = posById.get(last.getId());
             if (!target) return;
+            if (ring) {
+                this.drawArrow(layer, item, target, false, '#aaa', 1.2, true, -6);
+                return;
+            }
             const y = item.y + LinkedListVisualizer.NODE_HEIGHT - 8;
             const ty = target.y + LinkedListVisualizer.NODE_HEIGHT - 8;
             layer.append('line')
@@ -407,7 +467,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
                     .attr('x', x - 30)
                     .attr('y', LinkedListVisualizer.START_Y + bucket * LinkedListVisualizer.ROW_GAP + LinkedListVisualizer.NODE_HEIGHT / 2 + 5)
                     .style('font-size', '13px')
-                    .style('font-family', 'monospace')
+                    .style('font-family', '"JetBrains Mono", SimHei, monospace')
                     .style('fill', '#7f8c8d')
                     .text('[' + bucket + ']');
             });
@@ -417,16 +477,55 @@ export class LinkedListVisualizer extends BaseVisualizer {
     /**
      * 画一条后继箭头（from -> to）
      * @param curved 是否需要弧线（目标不在右侧时绕开中间节点）
+     * @param ring 环形布局：从节点方框边界沿中心连线方向出发
+     * @param offset 环形布局下垂直于连线的偏移（双向链表的正反箭头错开）
      */
     private drawArrow(
         layer: d3.Selection<SVGGElement, unknown, null, undefined>,
         from: LayoutItem, to: LayoutItem,
         curved: boolean, color: string, width: number,
+        ring = false, offset = 0,
     ): void {
-        const x1 = from.x + LinkedListVisualizer.NODE_WIDTH;
-        const y1 = from.y + LinkedListVisualizer.NODE_HEIGHT / 2;
-        const x2 = to.x;
-        const y2 = to.y + LinkedListVisualizer.NODE_HEIGHT / 2;
+        const halfW = LinkedListVisualizer.NODE_WIDTH / 2;
+        const halfH = LinkedListVisualizer.NODE_HEIGHT / 2;
+        let x1 = from.x + LinkedListVisualizer.NODE_WIDTH;
+        let y1 = from.y + halfH;
+        let x2 = to.x;
+        let y2 = to.y + halfH;
+
+        if (ring) {
+            const c1x = from.x + halfW;
+            const c1y = from.y + halfH;
+            const c2x = to.x + halfW;
+            const c2y = to.y + halfH;
+            const dx = c2x - c1x;
+            const dy = c2y - c1y;
+            const len = Math.hypot(dx, dy) || 1;
+            const t = Math.min(
+                Math.abs(dx) > 1e-6 ? halfW / Math.abs(dx) : Infinity,
+                Math.abs(dy) > 1e-6 ? halfH / Math.abs(dy) : Infinity,
+            );
+            x1 = c1x + dx * t;
+            y1 = c1y + dy * t;
+            x2 = c2x - dx * t;
+            y2 = c2y - dy * t;
+            if (offset !== 0) {
+                // 用法线方向统一朝同一侧，正反两条平行箭头才能分别落在边两侧
+                let nx = -dy / len;
+                let ny = dx / len;
+                if (nx < -1e-9 || (Math.abs(nx) <= 1e-9 && ny < 0)) {
+                    nx = -nx;
+                    ny = -ny;
+                }
+                const ox = nx * offset;
+                const oy = ny * offset;
+                x1 += ox;
+                y1 += oy;
+                x2 += ox;
+                y2 += oy;
+            }
+        }
+
         if (curved) {
             layer.append('path')
                 .attr('class', 'link-line link-curve')
@@ -494,7 +593,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
                 .attr('y', y)
                 .attr('text-anchor', 'middle')
                 .style('font-size', '12px')
-                .style('font-family', 'monospace')
+                .style('font-family', '"JetBrains Mono", SimHei, monospace')
                 .style('fill', color)
                 .style('font-weight', 'bold')
                 .text(text);
