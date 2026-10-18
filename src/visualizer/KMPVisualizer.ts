@@ -1,6 +1,5 @@
 import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
-import { DataNode } from '../node/DataNode';
 import { KMPNode } from '../node/ArrayNode/impl/KMPNode';
 
 const COLOR_BG = '#ffffff';
@@ -24,7 +23,7 @@ export class KMPVisualizer extends BaseVisualizer {
         super(svg);
     }
 
-    onOp(node: DataNode, method: string, args: any[]): void {
+    onOp(node: object, method: string, args: unknown[]): void {
         if (method === '_create') {
             if (node instanceof KMPNode) {
                 this.ds = node;

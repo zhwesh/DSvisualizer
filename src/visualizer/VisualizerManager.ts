@@ -1,47 +1,12 @@
 import * as d3 from 'd3';
 import { setOpHook } from '../node/factory';
-import { DataNode } from '../node/DataNode';
 import { BaseVisualizer } from './BaseVisualizer';
-import { ArrayVisualizer } from './ArrayVisualizer';
-import { LinkedListVisualizer } from './LinkedListVisualizer';
-import { TreeVisualizer } from './TreeVisualizer';
 import { BinarySearchVisualizer } from './BinarySearchVisualizer';
-import { GraphVisualizer } from './GraphVisualizer';
-import { SortVisualizer } from './SortVisualizer';
-import { KMPVisualizer } from './KMPVisualizer';
+import { VisualizerType } from './VisualizerType';
+import { REGISTRY } from './registry';
 
-/**
- * 可视化器类型（值即类型，兼容 erasableSyntaxOnly）
- */
-export const VisualizerType = {
-    ARRAY_LIST: 'array_list',
-    SINGLY_LINKED_LIST: 'singly_linked_list',
-    CIRCULAR_LINKED_LIST: 'circular_linked_list',
-    DOUBLE_LINKED_LIST: 'double_linked_list',
-    STACK: 'stack',
-    QUEUE: 'queue',
-    BST: 'bst',
-    AVL: 'avl',
-    RED_BLACK: 'red_black',
-    BINARY_SEARCH: 'binary_search',
-    BINARY_TREE_TRAVERSAL: 'binary_tree_traversal',
-    SEGMENT_TREE: 'segment_tree',
-    ARRAY_QUEUE: 'array_queue',
-    ARRAY_DEQUE: 'array_deque',
-    ARRAY_STACK: 'array_stack',
-    TRIE: 'trie',
-    DIJKSTRA: 'dijkstra',
-    FLOYD: 'floyd',
-    PRIM: 'prim',
-    KRUSKAL: 'kruskal',
-    BUBBLE_SORT: 'bubble_sort',
-    INSERTION_SORT: 'insertion_sort',
-    MERGE_SORT: 'merge_sort',
-    QUICK_SORT: 'quick_sort',
-    KMP: 'kmp',
-} as const;
-
-export type VisualizerType = typeof VisualizerType[keyof typeof VisualizerType];
+export { VisualizerType } from './VisualizerType';
+export type { VisualizerType as VisualizerTypeValue } from './VisualizerType';
 
 /**
  * 全局可视化管理器
@@ -78,8 +43,8 @@ export class VisualizerManager {
             .style('background', '#fafafa');
 
         // 注册全局opHook
-        setOpHook((target: object, method: string, args: any[]) => {
-            this.handleOp(target as DataNode, method, args);
+        setOpHook((target: object, method: string, args: unknown[]) => {
+            this.handleOp(target, method, args);
         });
     }
 
@@ -104,55 +69,17 @@ export class VisualizerManager {
 
         this.currentType = type;
 
-        // 创建新的可视化器
-        switch (type) {
-            case VisualizerType.ARRAY_LIST:
-                this.currentVisualizer = new ArrayVisualizer(this.svg);
-                break;
-            case VisualizerType.SINGLY_LINKED_LIST:
-            case VisualizerType.CIRCULAR_LINKED_LIST:
-            case VisualizerType.DOUBLE_LINKED_LIST:
-                this.currentVisualizer = new LinkedListVisualizer(this.svg);
-                break;
-            case VisualizerType.BST:
-            case VisualizerType.AVL:
-            case VisualizerType.RED_BLACK:
-            case VisualizerType.BINARY_TREE_TRAVERSAL:
-                this.currentVisualizer = new TreeVisualizer(this.svg);
-                break;
-            case VisualizerType.BINARY_SEARCH: {
-                const visualizer = new BinarySearchVisualizer(this.svg);
-                visualizer.setPointerListener(this.binarySearchPointerListener);
-                this.currentVisualizer = visualizer;
-                break;
-            }
-            case VisualizerType.ARRAY_QUEUE:
-            case VisualizerType.ARRAY_DEQUE:
-            case VisualizerType.ARRAY_STACK:
-                this.currentVisualizer = new ArrayVisualizer(this.svg);
-                break;
-            case VisualizerType.SEGMENT_TREE:
-            case VisualizerType.TRIE:
-                this.currentVisualizer = new TreeVisualizer(this.svg);
-                break;
-            case VisualizerType.DIJKSTRA:
-            case VisualizerType.FLOYD:
-            case VisualizerType.PRIM:
-            case VisualizerType.KRUSKAL:
-                this.currentVisualizer = new GraphVisualizer(this.svg);
-                break;
-            case VisualizerType.BUBBLE_SORT:
-            case VisualizerType.INSERTION_SORT:
-            case VisualizerType.MERGE_SORT:
-            case VisualizerType.QUICK_SORT:
-                this.currentVisualizer = new SortVisualizer(this.svg);
-                break;
-            case VisualizerType.KMP:
-                this.currentVisualizer = new KMPVisualizer(this.svg);
-                break;
-            default:
-                console.warn('未知的可视化类型：', type);
+        // 通过注册表创建可视化器
+        const entry = REGISTRY[type];
+        if (!entry) {
+            console.warn('未知的可视化类型：', type);
+            return;
         }
+        const visualizer = new entry.visualizer(this.svg);
+        if (visualizer instanceof BinarySearchVisualizer) {
+            visualizer.setPointerListener(this.binarySearchPointerListener);
+        }
+        this.currentVisualizer = visualizer;
     }
 
     /**
@@ -183,7 +110,7 @@ export class VisualizerManager {
     /**
      * 处理原子操作回调（全局分发）
      */
-    private handleOp(node: DataNode, method: string, args: any[]): void {
+    private handleOp(node: object, method: string, args: unknown[]): void {
         if (this.currentVisualizer) {
             this.currentVisualizer.onOp(node, method, args);
         }

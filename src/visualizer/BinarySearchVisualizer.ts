@@ -1,6 +1,5 @@
 import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
-import { DataNode } from '../node/DataNode';
 import { BinarySearchNode } from '../node/ArrayNode/impl/BinarySearchNode';
 
 const COLOR_MID = '#ffeaa7';     // mid 高亮
@@ -45,7 +44,7 @@ export class BinarySearchVisualizer extends BaseVisualizer {
     private static readonly START_Y = 255;
     private static readonly CANVAS_W = 1200;
 
-    onOp(node: DataNode, method: string, _args: any[]): void {
+    onOp(node: object, method: string, _args: unknown[]): void {
         if (!(node instanceof BinarySearchNode)) {
             return;
         }
@@ -67,6 +66,19 @@ export class BinarySearchVisualizer extends BaseVisualizer {
     private handleCreate(node: BinarySearchNode): void {
         this.arrNode = node;
         this.group = this.mainGroup.append('g').attr('class', 'binary-search-group');
+        if (this.mainGroup.select('#bs-pointer-arrow').empty()) {
+            this.mainGroup.append('defs').append('marker')
+                .attr('id', 'bs-pointer-arrow')
+                .attr('viewBox', '0 0 10 10')
+                .attr('refX', 9)
+                .attr('refY', 5)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+                .attr('fill', '#2196F3');
+        }
         this.render();
     }
 
@@ -121,11 +133,11 @@ export class BinarySearchVisualizer extends BaseVisualizer {
         // enter与update统一更新：位置、宽度、字号、范围底色与mid高亮
         const merged = enterCells.merge(cells);
 
-        merged.attr('transform', (_d: any, i: number) => `translate(${startX + i * cellW}, ${startY})`);
+        merged.attr('transform', (_d: number | null, i: number) => `translate(${startX + i * cellW}, ${startY})`);
 
         merged.select('.bs-cell-rect')
             .attr('width', cellW)
-            .attr('fill', (_d: any, i: number) => {
+            .attr('fill', (_d: number | null, i: number) => {
                 const inRange = node.left !== null && node.right !== null && i >= node.left && i <= node.right;
                 if (node.mid !== null && i === node.mid) return COLOR_MID;
                 return inRange ? COLOR_RANGE : '#fff';
@@ -134,17 +146,59 @@ export class BinarySearchVisualizer extends BaseVisualizer {
         merged.select('.cell-value')
             .attr('x', cellW / 2)
             .style('font-size', fontSize + 'px')
-            .text((d: any) => d !== null ? String(d) : '');
+            .text((d: number | null) => d !== null ? String(d) : '');
 
         cells.exit().remove();
 
         // 2. 先移除旧的指针
         g.selectAll('.pointer').remove();
 
-        // 3. 渲染指针
-        this.renderPointer(g, node.left, 'left', startX, startY, cellW, cellH, '#2196F3');
-        this.renderPointer(g, node.right, 'right', startX, startY, cellW, cellH, '#2196F3');
+        // 3. 渲染指针；left 与 right 重合时共用一个箭头，指针名纵向排列
+        const sameLR = node.left !== null && node.right !== null && node.left === node.right;
+        if (sameLR) {
+            this.renderSharedPointer(g, node.left, ['left', 'right'], startX, startY, cellW, cellH, '#2196F3');
+        } else {
+            this.renderPointer(g, node.left, 'left', startX, startY, cellW, cellH, '#2196F3');
+            this.renderPointer(g, node.right, 'right', startX, startY, cellW, cellH, '#2196F3');
+        }
         this.renderPointer(g, node.mid, 'mid', startX, startY, cellW, cellH, '#2196F3');
+    }
+
+    private renderSharedPointer(
+        g: d3.Selection<SVGGElement, unknown, null, undefined>,
+        idx: number | null,
+        labels: string[],
+        startX: number,
+        startY: number,
+        cellW: number,
+        cellH: number,
+        color: string
+    ): void {
+        if (idx === null) return;
+
+        const x = startX + idx * cellW + cellW / 2;
+        const cellBottom = startY + cellH;
+
+        g.append('line')
+            .attr('class', 'pointer')
+            .attr('x1', x)
+            .attr('y1', cellBottom + 20)
+            .attr('x2', x)
+            .attr('y2', cellBottom + 3)
+            .attr('stroke', color)
+            .attr('stroke-width', 1.5)
+            .attr('marker-end', 'url(#bs-pointer-arrow)');
+
+        labels.forEach((label, i) => {
+            g.append('text')
+                .attr('class', 'pointer')
+                .attr('x', x)
+                .attr('y', cellBottom + 34 + i * 16)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '14px')
+                .style('fill', color)
+                .text(label);
+        });
     }
 
     private renderPointer(
@@ -162,35 +216,41 @@ export class BinarySearchVisualizer extends BaseVisualizer {
         const x = startX + idx * cellW + cellW / 2;
 
         if (label === 'mid') {
-            // mid指针在上方，向下箭头
-            g.append('g')
+            g.append('text')
                 .attr('class', 'pointer')
-                .attr('transform', `translate(${x}, ${startY - 35})`)
-                .call((g) => {
-                    g.append('text')
-                        .attr('text-anchor', 'middle')
-                        .style('font-size', '14px')
-                        .style('fill', color)
-                        .text('mid');
-                    g.append('path')
-                        .attr('d', `M 0 10 L -5 20 L 5 20 Z`)
-                        .attr('fill', color);
-                });
+                .attr('x', x)
+                .attr('y', startY - 32)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '14px')
+                .style('fill', color)
+                .text('mid');
+            g.append('line')
+                .attr('class', 'pointer')
+                .attr('x1', x)
+                .attr('y1', startY - 26)
+                .attr('x2', x)
+                .attr('y2', startY - 3)
+                .attr('stroke', color)
+                .attr('stroke-width', 1.5)
+                .attr('marker-end', 'url(#bs-pointer-arrow)');
         } else {
-            // left和right指针在下方，向上箭头
-            g.append('g')
+            g.append('text')
                 .attr('class', 'pointer')
-                .attr('transform', `translate(${x}, ${startY + cellH + 15})`)
-                .call((g) => {
-                    g.append('text')
-                        .attr('text-anchor', 'middle')
-                        .style('font-size', '14px')
-                        .style('fill', color)
-                        .text(label);
-                    g.append('path')
-                        .attr('d', `M 0 -10 L -5 -20 L 5 -20 Z`)
-                        .attr('fill', color);
-                });
+                .attr('x', x)
+                .attr('y', startY + cellH + 36)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '14px')
+                .style('fill', color)
+                .text(label);
+            g.append('line')
+                .attr('class', 'pointer')
+                .attr('x1', x)
+                .attr('y1', startY + cellH + 25)
+                .attr('x2', x)
+                .attr('y2', startY + cellH + 3)
+                .attr('stroke', color)
+                .attr('stroke-width', 1.5)
+                .attr('marker-end', 'url(#bs-pointer-arrow)');
         }
     }
 

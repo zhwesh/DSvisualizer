@@ -1,5 +1,4 @@
 import * as d3 from 'd3';
-import { DataNode } from '../node/DataNode';
 
 /**
  * 可视化器基类
@@ -20,7 +19,7 @@ export abstract class BaseVisualizer {
      * @param method 方法名
      * @param args 参数
      */
-    abstract onOp(node: DataNode, method: string, args: any[]): void;
+    abstract onOp(node: object, method: string, args: unknown[]): void;
 
     /**
      * 清空画布

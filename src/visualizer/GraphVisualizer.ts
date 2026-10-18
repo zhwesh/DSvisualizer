@@ -1,7 +1,5 @@
 import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
-import { DataNode } from '../node/DataNode';
-import { DirectedGraphNode } from '../node/GraphNode/DirectedGraphNode';
 import { UndirectedGraphNode } from '../node/GraphNode/UndirectedGraphNode';
 import { dijkstraNode } from '../node/GraphNode/impl/DijkstraNode';
 import { floydNode } from '../node/GraphNode/impl/FloydNode';
@@ -93,11 +91,16 @@ export class GraphVisualizer extends BaseVisualizer {
         return COLOR_NONE;
     }
 
+    private isGraphNode(node: object): node is GraphNodeInstance {
+        return node instanceof dijkstraNode || node instanceof floydNode ||
+            node instanceof kruskalNode || node instanceof primNode;
+    }
+
     // ---------- 原子操作分发 ----------
-    onOp(node: DataNode, method: string, args: any[]): void {
+    onOp(node: object, method: string, args: unknown[]): void {
         if (method === '_create') {
-            if (node instanceof DirectedGraphNode || node instanceof UndirectedGraphNode) {
-                this.ds = node as unknown as GraphNodeInstance;
+            if (this.isGraphNode(node)) {
+                this.ds = node;
             }
             this.render();
             return;

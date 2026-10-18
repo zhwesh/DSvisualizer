@@ -1,0 +1,37 @@
+<script setup lang="ts">
+import { computed } from 'vue';
+import { ICON_PATHS, type IconName } from './icons';
+
+const props = withDefaults(defineProps<{
+    name: IconName;
+    size?: number;
+}>(), {
+    size: 16,
+});
+
+const paths = computed(() => ICON_PATHS[props.name]);
+</script>
+
+<template>
+    <svg
+        :width="size"
+        :height="size"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+        focusable="false"
+    >
+        <path v-for="(d, idx) in paths" :key="idx" :d="d" />
+    </svg>
+</template>
+
+<style scoped>
+svg {
+    display: block;
+    flex: none;
+}
+</style>

@@ -1,6 +1,5 @@
 import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
-import { DataNode } from '../node/DataNode';
 import { BinaryTreeNode } from '../node/BinaryTreeNode/BinaryTreeNode';
 import { TreeNode } from '../node/TreeNode/TreeNode';
 import { TrieNode } from '../node/TreeNode/impl/TrieNode';
@@ -11,12 +10,18 @@ import { BinaryTreeTraversalNode } from '../node/BinaryTreeNode/impl/BinaryTreeT
 import { AVLTreeNode } from '../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/AVLTreeNode';
 import { RedBlackTreeNode, RedBlackTree_Red } from '../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/RedBlackTreeNode';
 import { Trie } from '../datastructure/Tree/Trie/Trie';
+import { BinarySearchTree } from '../datastructure/Tree/BinarySearchTree/BinarySearchTree';
+import { AVLTree } from '../datastructure/Tree/BinarySearchTree/AVLTree';
+import { RedBlackTree } from '../datastructure/Tree/BinarySearchTree/RedBlackTree';
+import { ScapegoatTree } from '../datastructure/Tree/BinarySearchTree/ScapegoatTree';
+import { TreapTree } from '../datastructure/Tree/BinarySearchTree/TreapTree';
+import { SegmentTree } from '../datastructure/Tree/SegmentTree/SegmentTree';
+import { BinaryTreeTraversal } from '../algorithm/Tree/BinaryTreeTraversal';
 
-// 树形数据结构统一只读视图（通过各数据类暴露的只读 getter 提供根节点）
-// 注意：二叉树遍历等算法类实例也走同一条创建通道，但没有 getRootNode，必须按可选方法处理
-interface TreeLike {
-    getRootNode?(): unknown;
-}
+// 树形可视化覆盖的数据结构/算法实例
+type TreeDS =
+    | BinarySearchTree | AVLTree | RedBlackTree | ScapegoatTree | TreapTree
+    | SegmentTree | Trie | BinaryTreeTraversal;
 
 // 渲染布局项类型
 interface BinaryLayoutItem {
@@ -53,7 +58,7 @@ export class TreeVisualizer extends BaseVisualizer {
     // 所有节点ID -> 节点对象（用于连线、删除与闪烁定位）
     private nodes: Map<number, BinaryTreeNode<any> | TreeNode<any>> = new Map();
     // 当前绑定的数据结构实例（BinarySearchTree/AVLTree/RedBlackTree/SegmentTree/Trie等）
-    private ds: TreeLike | null = null;
+    private ds: TreeDS | null = null;
     // 渲染模式
     private mode: 'binary' | 'trie' = 'binary';
     // 遍历结果数组
@@ -77,7 +82,7 @@ export class TreeVisualizer extends BaseVisualizer {
     private static readonly MIN_VIEW_H = 240;
 
     // ---------- 原子操作分发 ----------
-    onOp(node: DataNode, method: string, args: any[]): void {
+    onOp(node: object, method: string, args: unknown[]): void {
         // 遍历结果数组
         if (node instanceof ArrayNode) {
             this.handleAnswerArray(node);
@@ -95,7 +100,7 @@ export class TreeVisualizer extends BaseVisualizer {
             return;
         }
 
-        const treeNode = node as BinaryTreeNode<any>;
+        const treeNode = node;
         switch (method) {
             case '_create':
                 this.nodes.set(treeNode.getId(), treeNode);
@@ -131,11 +136,19 @@ export class TreeVisualizer extends BaseVisualizer {
     /**
      * 处理数据结构级原子操作
      */
-    private handleDsOp(node: DataNode, method: string, args: any[]): void {
+    private isTreeDS(node: object): node is TreeDS {
+        return node instanceof BinarySearchTree || node instanceof AVLTree ||
+            node instanceof RedBlackTree || node instanceof ScapegoatTree ||
+            node instanceof TreapTree || node instanceof SegmentTree ||
+            node instanceof Trie || node instanceof BinaryTreeTraversal;
+    }
+
+    private handleDsOp(node: object, method: string, args: unknown[]): void {
         switch (method) {
             case '_create':
             case '_set_root':
-                this.ds = node as unknown as TreeLike;
+                if (!this.isTreeDS(node)) return;
+                this.ds = node;
                 // 依据数据结构类型判断渲染模式（Trie为多叉树）
                 this.mode = node instanceof Trie ? 'trie' : 'binary';
                 this.registerRoot(args);
@@ -163,7 +176,7 @@ export class TreeVisualizer extends BaseVisualizer {
     /**
      * 把_set_root(root)传入的根节点补登记（兜底：节点未在本可视化器登记的情况）
      */
-    private registerRoot(args: any[]): void {
+    private registerRoot(args: unknown[]): void {
         const root = args.length > 0 ? args[0] : null;
         if (root instanceof BinaryTreeNode) {
             this.nodes.set(root.getId(), root);
@@ -191,12 +204,13 @@ export class TreeVisualizer extends BaseVisualizer {
      * 二叉树遍历等算法类实例没有 getRootNode，此时返回null（由节点登记表反推根）
      */
     private getDsRoot(): BinaryTreeNode<any> | null {
-        if (!this.ds) return null;
-        const getter = this.ds.getRootNode;
-        if (typeof getter !== 'function') return null;
-        const root = getter.call(this.ds);
-        if (root === null || root === undefined) return null;
-        return root as BinaryTreeNode<any>;
+        const ds = this.ds;
+        if (ds instanceof BinarySearchTree || ds instanceof AVLTree ||
+            ds instanceof RedBlackTree || ds instanceof ScapegoatTree ||
+            ds instanceof TreapTree || ds instanceof SegmentTree) {
+            return ds.getRootNode();
+        }
+        return null;
     }
 
     /**
@@ -498,8 +512,7 @@ export class TreeVisualizer extends BaseVisualizer {
      */
     private collectTrie(): TrieLayoutItem[] {
         const result: TrieLayoutItem[] = [];
-        const getter = this.ds?.getRootNode;
-        const root = (typeof getter === 'function' ? getter.call(this.ds) : null) as TrieNode | null;
+        const root = this.ds instanceof Trie ? this.ds.getRootNode() : null;
         if (!root) return result;
 
         const queue: { node: TrieNode; parent: TrieNode | null; letter: string | null; depth: number }[] = [];

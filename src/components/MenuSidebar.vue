@@ -52,7 +52,11 @@ const rows = computed<Row[]>(() => {
                 v-if="row.key"
                 :class="['menu-leaf', { active: row.key === currentKey }]"
                 :style="{ paddingLeft: 14 + row.depth * 14 + 'px' }"
+                role="button"
+                tabindex="0"
                 @click="emit('select', row.key)"
+                @keydown.enter="emit('select', row.key)"
+                @keydown.space.prevent="emit('select', row.key)"
             >
                 {{ row.label }}
             </div>
@@ -71,7 +75,7 @@ const rows = computed<Row[]>(() => {
 .menu-group {
     padding-top: 12px;
     padding-bottom: 4px;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: #7b8794;
     letter-spacing: 0.5px;
@@ -82,7 +86,7 @@ const rows = computed<Row[]>(() => {
     padding-top: 7px;
     padding-bottom: 7px;
     padding-right: 12px;
-    font-size: 13px;
+    font-size: 14px;
     color: #374151;
     cursor: pointer;
     border-left: 3px solid transparent;

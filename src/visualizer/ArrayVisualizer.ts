@@ -1,6 +1,5 @@
 import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
-import { DataNode } from '../node/DataNode';
 import { ArrayNode } from '../node/ArrayNode/ArrayNode';
 import { ArrayStackNode } from '../node/ArrayNode/impl/ArrayStackNode';
 import { ArrayQueueNode } from '../node/ArrayNode/impl/ArrayQueueNode';
@@ -53,22 +52,22 @@ export class ArrayVisualizer extends BaseVisualizer {
     private static readonly ROW_GAP = 24;       // 附加行与主行的垂直间距
     private static readonly ARRAY_GAP = 130;    // 两个数组之间的垂直间距
 
-    onOp(node: DataNode, method: string, args: any[]): void {
+    onOp(node: object, method: string, args: unknown[]): void {
         // 只处理ArrayNode类型的节点
         if (!(node instanceof ArrayNode)) {
             return;
         }
-        const arrNode = node as ArrayNode;
+        const arrNode = node;
 
         switch (method) {
             case '_create':
                 this.handleCreate(arrNode);
                 break;
             case '_add_value':
-                this.handleAddValue(arrNode, args[0]);
+                this.handleAddValue(arrNode, args[0] as number | null);
                 break;
             case '_set_value':
-                this.handleSetValue(arrNode, args[0] as number, args[1]);
+                this.handleSetValue(arrNode, args[0] as number, args[1] as number | null);
                 break;
             case '_swap_value':
                 this.handleSwapValue(arrNode, args[0] as number, args[1] as ArrayNode, args[2] as number);
@@ -318,7 +317,7 @@ export class ArrayVisualizer extends BaseVisualizer {
             return;
         }
         const PAD_X = 28;
-        const PAD_Y = 42;   // 上方容纳指针（-34）
+        const PAD_Y = 60;   // 容纳上下两侧的指针名与共享箭头
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         this.arrayNodes.forEach(info => {
             const rows = this.buildRows(info.node);
@@ -352,63 +351,112 @@ export class ArrayVisualizer extends BaseVisualizer {
 
         // 主行下方渲染指针
         const rowY = startY;
-        const bottomY = rowY + cellHeight;
 
-        const addPointer = (idx: number | null | undefined, label: string, above: boolean): void => {
+        if (this.mainGroup.select('#array-pointer-arrow').empty()) {
+            this.mainGroup.append('defs').append('marker')
+                .attr('id', 'array-pointer-arrow')
+                .attr('viewBox', '0 0 10 10')
+                .attr('refX', 9)
+                .attr('refY', 5)
+                .attr('markerWidth', 5)
+                .attr('markerHeight', 5)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+                .attr('fill', COLOR_POINTER);
+        }
+
+        const addPointer = (
+            idx: number | null | undefined,
+            label: string,
+            above: boolean,
+            offsetX: number = 0,
+            pointerRowY: number = rowY,
+        ): void => {
             if (idx === null || idx === undefined) return;
             const x = startX + idx * cellWidth + cellWidth / 2;
+            const labelX = x + offsetX;
+            const cellBottom = pointerRowY + cellHeight;
             const g = group.append('g').attr('class', 'pointer');
             if (above) {
-                g.attr('transform', `translate(${x}, ${rowY - 34})`);
                 g.append('text')
+                    .attr('x', labelX)
+                    .attr('y', pointerRowY - 34)
                     .attr('text-anchor', 'middle')
                     .style('font-size', '12px')
                     .style('fill', COLOR_POINTER)
                     .text(label);
-                g.append('path')
-                    .attr('d', 'M 0 12 L -6 20 L 6 20 Z')
-                    .attr('fill', COLOR_POINTER);
+                g.append('line')
+                    .attr('x1', labelX)
+                    .attr('y1', pointerRowY - 28)
+                    .attr('x2', x)
+                    .attr('y2', pointerRowY - 4)
+                    .attr('stroke', COLOR_POINTER)
+                    .attr('stroke-width', 1.3)
+                    .attr('marker-end', 'url(#array-pointer-arrow)');
             } else {
-                g.attr('transform', `translate(${x}, ${bottomY + 22})`);
                 g.append('text')
+                    .attr('x', labelX)
+                    .attr('y', cellBottom + 40)
                     .attr('text-anchor', 'middle')
                     .style('font-size', '12px')
                     .style('fill', COLOR_POINTER)
                     .text(label);
-                g.append('path')
-                    .attr('d', 'M 0 -12 L -6 -20 L 6 -20 Z')
-                    .attr('fill', COLOR_POINTER);
+                g.append('line')
+                    .attr('x1', labelX)
+                    .attr('y1', cellBottom + 29)
+                    .attr('x2', x)
+                    .attr('y2', cellBottom + 4)
+                    .attr('stroke', COLOR_POINTER)
+                    .attr('stroke-width', 1.3)
+                    .attr('marker-end', 'url(#array-pointer-arrow)');
             }
+        };
+
+        const addSharedPointer = (idx: number | null | undefined, labels: string[]): void => {
+            if (idx === null || idx === undefined) return;
+            const x = startX + idx * cellWidth + cellWidth / 2;
+            const cellBottom = rowY + cellHeight;
+            const g = group.append('g').attr('class', 'pointer');
+            g.append('line')
+                .attr('x1', x)
+                .attr('y1', cellBottom + 20)
+                .attr('x2', x)
+                .attr('y2', cellBottom + 4)
+                .attr('stroke', COLOR_POINTER)
+                .attr('stroke-width', 1.3)
+                .attr('marker-end', 'url(#array-pointer-arrow)');
+            labels.forEach((label, i) => {
+                g.append('text')
+                    .attr('x', x)
+                    .attr('y', cellBottom + 34 + i * 16)
+                    .attr('text-anchor', 'middle')
+                    .style('font-size', '12px')
+                    .style('fill', COLOR_POINTER)
+                    .text(label);
+            });
         };
 
         if (node instanceof ArrayStackNode) {
             addPointer(node.top, 'top', true);
         }
         if (node instanceof ArrayQueueNode) {
-            addPointer(node.head, 'head', false);
-            addPointer(node.tail, 'tail', false);
+            if (node.head !== null && node.head === node.tail) {
+                addSharedPointer(node.head, ['head', 'tail']);
+            } else {
+                addPointer(node.head, 'head', false);
+                addPointer(node.tail, 'tail', false);
+            }
         }
         if (node instanceof QuickSortNode) {
             addPointer(node.pivot, 'pivot', true);
         }
         if (node instanceof KMPNode) {
+            const rowY2 = startY + (cellHeight + ArrayVisualizer.ROW_GAP);
             // str 指针指向 str 行
-            if (node.strPtr !== null && node.strPtr !== undefined) {
-                const x = startX + node.strPtr * cellWidth + cellWidth / 2;
-                const g = group.append('g').attr('class', 'pointer');
-                g.attr('transform', `translate(${x}, ${startY + cellHeight + 22})`);
-                g.append('text').attr('text-anchor', 'middle').style('font-size', '12px').style('fill', COLOR_POINTER).text('strPtr');
-                g.append('path').attr('d', 'M 0 -12 L -6 -20 L 6 -20 Z').attr('fill', COLOR_POINTER);
-            }
+            addPointer(node.strPtr, 'strPtr', false, 0, rowY);
             // template 指针指向 template 行
-            if (node.templatePtr !== null && node.templatePtr !== undefined) {
-                const rowY2 = startY + (cellHeight + ArrayVisualizer.ROW_GAP);
-                const x = startX + node.templatePtr * cellWidth + cellWidth / 2;
-                const g = group.append('g').attr('class', 'pointer');
-                g.attr('transform', `translate(${x}, ${rowY2 + cellHeight + 22})`);
-                g.append('text').attr('text-anchor', 'middle').style('font-size', '12px').style('fill', COLOR_POINTER).text('tPtr');
-                g.append('path').attr('d', 'M 0 -12 L -6 -20 L 6 -20 Z').attr('fill', COLOR_POINTER);
-            }
+            addPointer(node.templatePtr, 'tPtr', false, 0, rowY2);
         }
     }
 

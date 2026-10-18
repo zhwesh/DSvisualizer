@@ -1,6 +1,5 @@
 import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
-import { DataNode } from '../node/DataNode';
 import { ArrayNode } from '../node/ArrayNode/ArrayNode';
 import { QuickSortNode } from '../node/ArrayNode/impl/QuickSortNode';
 import { BubbleSortNode } from '../node/ArrayNode/impl/BubbleSortNode';
@@ -55,7 +54,7 @@ export class SortVisualizer extends BaseVisualizer {
         return null;
     }
 
-    onOp(node: DataNode, method: string, args: any[]): void {
+    onOp(node: object, method: string, args: unknown[]): void {
         if (method === '_create') {
             // 只绑定第一个数组（主数组；归并的临时数组忽略）
             if (node instanceof ArrayNode && !this.ds) {

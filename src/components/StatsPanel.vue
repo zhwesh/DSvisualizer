@@ -3,7 +3,6 @@ defineProps<{
     isBinarySearch: boolean;
     bsVars: { left: number; right: number; mid: number; target: number };
     size: number;
-    currentOp: string;
 }>();
 </script>
 
@@ -17,7 +16,6 @@ defineProps<{
         </template>
         <template v-else>
             <div class="stat-line">节点数量: {{ size }}</div>
-            <div class="stat-line">当前操作: {{ currentOp }}</div>
         </template>
     </div>
 </template>
@@ -32,7 +30,7 @@ defineProps<{
     border: 1px solid #e0e4ea;
     border-radius: 6px;
     font-family: Consolas, 'Courier New', monospace;
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.65;
     color: #2d3748;
     pointer-events: none;

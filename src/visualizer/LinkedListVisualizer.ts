@@ -1,6 +1,5 @@
 import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
-import { DataNode } from '../node/DataNode';
 import { LinkedNode } from '../node/LinkedNode/LinkedNode';
 import { DoublyLinkedListNode } from '../node/LinkedNode/impl/DoublyLinkedNode';
 import { LinkedList } from '../datastructure/List/SinglyLinkedList';
@@ -11,16 +10,19 @@ import { LinkedQueue } from '../datastructure/Queue/LinkedQueue';
 import { LinkedDeque } from '../datastructure/Queue/LinkedDeque';
 import { HashTable } from '../datastructure/HashTable/HashTable';
 
-// 链式数据结构统一只读视图（由各数据类暴露的只读 getter 提供，避免鸭子类型）
-interface DSLinkLike {
-    getHeadNode?(): unknown;
-    getHeaderNode?(): unknown;
-    getTailNode?(): unknown;
-    getArr?(): unknown;
+// 可视化层只读的链式节点视图（只包含渲染所需字段）
+interface LinkedNodeView {
+    getId(): number;
+    val: number | null;
+    next: LinkedNodeView | null;
 }
 
+type LinkedListDS =
+    | LinkedList | CircularLinkedList | DoubleLinkedList
+    | LinkedStack | LinkedQueue | LinkedDeque | HashTable;
+
 interface LayoutItem {
-    node: LinkedNode<any>;
+    node: LinkedNodeView;
     x: number;
     y: number;
     isSentinel: boolean;
@@ -39,9 +41,9 @@ const COLOR_FLASH = '#f39c12';
  */
 export class LinkedListVisualizer extends BaseVisualizer {
     // 已渲染过的节点集合（用于退出动画判断）
-    private nodes: Map<number, LinkedNode<any>> = new Map();
+    private nodes: Map<number, LinkedNodeView> = new Map();
     // 当前绑定的数据结构实例（LinkedList / DoubleLinkedList / CircularLinkedList / LinkedStack / LinkedQueue / LinkedDeque / HashTable）
-    private ds: DSLinkLike | null = null;
+    private ds: LinkedListDS | null = null;
     // 渲染模式：linear（带头节点链表/栈）/ sentinel（带哨兵节点的循环链表/队列/双端队列）/ hashtable（哈希表链式桶）
     private mode: 'linear' | 'sentinel' | 'hashtable' = 'linear';
 
@@ -53,13 +55,13 @@ export class LinkedListVisualizer extends BaseVisualizer {
     private static readonly ROW_GAP = 90;       // 哈希表桶行之间的垂直间距
 
     // ---------- 原子操作分发 ----------
-    onOp(node: DataNode, method: string, args: any[]): void {
+    onOp(node: object, method: string, args: unknown[]): void {
         // 数据结构级操作（节点为数据结构实例本身）
         if (!(node instanceof LinkedNode)) {
             this.handleDsOp(node, method, args);
             return;
         }
-        const linked = node as LinkedNode<any>;
+        const linked = node;
 
         switch (method) {
             case '_create':
@@ -87,36 +89,45 @@ export class LinkedListVisualizer extends BaseVisualizer {
     /**
      * 处理数据结构级原子操作（绑定实例 + 重渲染）
      */
-    private handleDsOp(node: DataNode, method: string, _args: any[]): void {
-        const inst = node as unknown as DSLinkLike;
+    private isLinkedListDS(node: object): node is LinkedListDS {
+        return node instanceof LinkedList || node instanceof CircularLinkedList ||
+            node instanceof DoubleLinkedList || node instanceof LinkedStack ||
+            node instanceof LinkedQueue || node instanceof LinkedDeque ||
+            node instanceof HashTable;
+    }
+
+    private handleDsOp(node: object, method: string, _args: unknown[]): void {
+        if (!this.isLinkedListDS(node)) {
+            return;
+        }
         switch (method) {
             case '_create':
                 // 数据结构实例被 create() 创建时绑定
-                this.ds = inst;
+                this.ds = node;
                 this.mode = this.detectMode(node);
                 this.render();
                 break;
             case '_set_head':
-                this.ds = inst;
+                this.ds = node;
                 this.mode = 'linear';
                 this.render();
                 break;
             case '_set_header':
-                this.ds = inst;
+                this.ds = node;
                 this.mode = 'sentinel';
                 this.render();
                 break;
             case '_set_tail':
-                this.ds = inst;
+                this.ds = node;
                 this.render();
                 break;
             case '_set_array':
-                this.ds = inst;
+                this.ds = node;
                 this.mode = 'hashtable';
                 this.render();
                 break;
             case '_set_bucket':
-                this.ds = inst;
+                this.ds = node;
                 this.mode = 'hashtable';
                 this.render();
                 break;
@@ -131,7 +142,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
     /**
      * 依据数据结构类型判断渲染模式（不使用鸭子类型）
      */
-    private detectMode(node: DataNode): 'linear' | 'sentinel' | 'hashtable' {
+    private detectMode(node: object): 'linear' | 'sentinel' | 'hashtable' {
         if (node instanceof HashTable) return 'hashtable';
         if (node instanceof CircularLinkedList || node instanceof LinkedQueue || node instanceof LinkedDeque) {
             return 'sentinel';
@@ -148,17 +159,17 @@ export class LinkedListVisualizer extends BaseVisualizer {
 
         const step = LinkedListVisualizer.NODE_WIDTH + LinkedListVisualizer.NODE_GAP;
 
-        if (this.mode === 'hashtable') {
-            const arr = this.ds.getArr?.() as (LinkedNode<any> | null)[] | undefined;
-            arr?.forEach((headNode, idx) => {
+        if (this.ds instanceof HashTable) {
+            const arr = this.ds.getArr();
+            arr.forEach((headNode, idx) => {
                 if (!headNode) return;
                 // 每个桶按自身长度水平居中（节点宽 + 节点间隙）
                 let len = 0;
-                let t: LinkedNode<any> | null = headNode;
+                let t: LinkedNodeView | null = headNode;
                 while (t) { len++; t = t.next; }
                 const totalW = len * LinkedListVisualizer.NODE_WIDTH + (len - 1) * LinkedListVisualizer.NODE_GAP;
                 const bucketStartX = Math.max(60, (LinkedListVisualizer.CANVAS_W - totalW) / 2);
-                let curr: LinkedNode<any> | null = headNode;
+                let curr: LinkedNodeView | null = headNode;
                 let i = 0;
                 const maxIter = 200;
                 while (curr && i < maxIter) {
@@ -177,10 +188,16 @@ export class LinkedListVisualizer extends BaseVisualizer {
         }
 
         // 链式结构：线性（head）或哨兵（header）
-        const header = this.ds.getHeaderNode?.() as LinkedNode<any> | undefined;
-        const start: LinkedNode<any> | null = this.mode === 'sentinel'
-            ? (header ? header.next : null)
-            : (this.ds.getHeadNode?.() as LinkedNode<any> | null ?? null);
+        let header: LinkedNodeView | null = null;
+        let start: LinkedNodeView | null = null;
+        if (this.ds instanceof CircularLinkedList || this.ds instanceof LinkedQueue || this.ds instanceof LinkedDeque) {
+            header = this.ds.getHeaderNode();
+            start = header.next;
+        } else if (this.ds instanceof LinkedList || this.ds instanceof DoubleLinkedList || this.ds instanceof LinkedStack) {
+            start = this.ds.getHeadNode();
+        } else {
+            return result;
+        }
 
         // 先统计节点总数，使整条链表水平居中（节点宽 + 节点间隙）
         let count = 0;
@@ -346,7 +363,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
 
         // 后继箭头：直接读节点自己的next指针，而不是假设渲染顺序相邻
         layout.forEach(item => {
-            const next = item.node.next as LinkedNode<any> | null;
+            const next = item.node.next;
             if (!next) return;
             const target = posById.get(next.getId());
             if (!target) return;
@@ -498,9 +515,10 @@ export class LinkedListVisualizer extends BaseVisualizer {
             const headerItem = layout[0];
             addLabel(headerItem.x + LinkedListVisualizer.NODE_WIDTH / 2, headerItem.y - 10, 'header', '#e67e22');
 
-            // 队列：tail 指针
-            if (ds instanceof LinkedQueue) {
-                const tailItem = layout.find(item => item.node === ds.getTailNode() && !item.isSentinel);
+            // 队列/双端队列：tail 指针
+            if (ds instanceof LinkedQueue || ds instanceof LinkedDeque) {
+                const tailNode = ds instanceof LinkedQueue ? ds.getTailNode() : ds.getHeaderNode().last;
+                const tailItem = layout.find(item => item.node === tailNode && !item.isSentinel);
                 if (tailItem) {
                     addLabel(tailItem.x + LinkedListVisualizer.NODE_WIDTH / 2, tailItem.y - 10, 'tail', '#3498db');
                 }

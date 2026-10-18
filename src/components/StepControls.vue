@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import AppIcon from './AppIcon.vue';
+
+defineProps<{
+    currentOp: string;
+}>();
+
 const emit = defineEmits<{
     (e: 'play'): void;
     (e: 'fast'): void;
@@ -9,10 +15,21 @@ const emit = defineEmits<{
 
 <template>
     <div class="step-controls">
-        <button class="control-btn" title="播放" @click="emit('play')">▶</button>
-        <button class="control-btn" title="快进" @click="emit('fast')">⏩</button>
-        <button class="control-btn" title="暂停" @click="emit('pause')">⏸</button>
-        <button class="control-btn" title="单步执行" @click="emit('step')">➜</button>
+        <span class="op-label">当前操作：{{ currentOp }}</span>
+        <div class="control-row">
+            <button class="control-btn" title="播放" aria-label="播放" @click="emit('play')">
+                <AppIcon name="play" :size="15" />
+            </button>
+            <button class="control-btn" title="快进" aria-label="快进" @click="emit('fast')">
+                <AppIcon name="fastForward" :size="15" />
+            </button>
+            <button class="control-btn" title="暂停" aria-label="暂停" @click="emit('pause')">
+                <AppIcon name="pause" :size="15" />
+            </button>
+            <button class="control-btn" title="单步执行" aria-label="单步执行" @click="emit('step')">
+                <AppIcon name="stepForward" :size="15" />
+            </button>
+        </div>
     </div>
 </template>
 
@@ -22,18 +39,36 @@ const emit = defineEmits<{
     top: 12px;
     right: 12px;
     display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #e0e4ea;
+    border-radius: 6px;
+    z-index: 3;
+}
+
+.op-label {
+    font-size: 14px;
+    color: #4a5568;
+    white-space: nowrap;
+}
+
+.control-row {
+    display: flex;
     gap: 6px;
-    z-index: 2;
 }
 
 .control-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 34px;
     height: 34px;
     border: 1px solid #cfd8e3;
     border-radius: 6px;
     background: #fff;
     color: #2b4a6f;
-    font-size: 15px;
     cursor: pointer;
     transition: background 0.15s, border-color 0.15s, transform 0.1s;
 }
