@@ -25,11 +25,12 @@ export class BinaryIndexedTree {
 
     /**
      * 根据初始数组建树
-     * @param nums 初始数组（长度为n，元素对应下标1...n）
+     * @param n 元素个数
+     * @param initialValue 每个元素的初始值，默认为0
      */
-    constructor(n: number) {
+    constructor(n: number, initialValue: number = 0) {
         this.n = n;
-        this.node = create(BinaryIndexedTreeNode, n);
+        this.node = create(BinaryIndexedTreeNode, n, initialValue);
     }
 
     /**

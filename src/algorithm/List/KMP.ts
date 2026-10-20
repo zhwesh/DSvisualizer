@@ -30,14 +30,13 @@ export class KMP {
         }
 
         this.node._clear_color();
-        await stepController.wait();
         messageController.message("规定next[0] = -1", MessageType.INFO);
         this.node._set_value(0, -1);
+        await stepController.wait();
 
         let j = -1;
         for (let i = 0; i < m - 1; ++i) {
             while (true) {
-                await stepController.wait();
                 if (j === -1) {
                     messageController.message(
                         "没有可用的公共前后缀，next[" + (i + 1) + "] = 0",
@@ -45,6 +44,7 @@ export class KMP {
                     );
                     this.node._set_value(i + 1, 0);
                     j = 0;
+                    await stepController.wait();
                     break;
                 }
                 if (p[i] === p[j]) {
@@ -57,6 +57,7 @@ export class KMP {
                     this.node._set_suffix_color(i, true);
                     this.node._set_value(i + 1, j + 1);
                     ++j;
+                    await stepController.wait();
                     break;
                 }
                 const k = this.node.data[j]!;
@@ -75,8 +76,10 @@ export class KMP {
                     }
                 }
                 j = k;
+                await stepController.wait();
             }
         }
+        messageController.message("next数组求解完成", MessageType.SUCCESS);
     }
 
     /**
@@ -104,8 +107,8 @@ export class KMP {
         let i = 0, j = 0;
         this.node._set_str_ptr(0);
         this.node._set_template_ptr(0);
+        await stepController.wait();
         while (i < n && j < m) {
-            await stepController.wait();
             if (j === -1) {
                 messageController.message(
                     "匹配下一个字符",
@@ -116,6 +119,7 @@ export class KMP {
                 if (i < n) {
                     this.node._align(i, 0);
                 }
+                await stepController.wait();
                 continue;
             }
 
@@ -123,7 +127,6 @@ export class KMP {
                 "比较str[" + i + "]与template[" + j + "]",
                 MessageType.INFO
             );
-            await stepController.wait();
             if (this.node.str[i] === this.node.template[j]) {
                 messageController.message(
                     "'" + this.node.str[i] + "' = '" + this.node.template[j] +
@@ -142,6 +145,7 @@ export class KMP {
                     this.node._align(i, j);
                 }
             }
+            await stepController.wait();
         }
 
         messageController.message("匹配结束", MessageType.SUCCESS);

@@ -1477,7 +1477,7 @@ const handleSegReset = (): void => {
         segDataLen = 8;
         DataNode.restart();
         visualizerManager.switchVisualizer(VisualizerType.SEGMENT_TREE);
-        currentDS = create(SegmentTree, [1, 2, 3, 4, 5, 6, 7, 8]);
+        currentDS = create(SegmentTree, [1, 1, 1, 1, 1, 1, 1, 1]);
         updateStats();
         addMessage('已重新开始', MessageType.SUCCESS);
     });
@@ -1642,7 +1642,7 @@ const handleBitReset = (): void => {
         bitSize = BIT_DEFAULT_SIZE;
         DataNode.restart();
         visualizerManager.switchVisualizer(VisualizerType.BINARY_INDEXED_TREE);
-        currentDS = create(BinaryIndexedTree, bitSize);
+        currentDS = create(BinaryIndexedTree, bitSize, 1);
         updateStats();
         addMessage('已重新开始', MessageType.SUCCESS);
     });
@@ -1655,7 +1655,7 @@ const handleBitSetSize = (values: Record<string, string>): void => {
         bitSize = n;
         DataNode.restart();
         visualizerManager.switchVisualizer(VisualizerType.BINARY_INDEXED_TREE);
-        currentDS = create(BinaryIndexedTree, bitSize);
+        currentDS = create(BinaryIndexedTree, bitSize, 1);
         updateStats();
         addMessage(`已初始化长度为 ${n} 的树状数组`, MessageType.SUCCESS);
     });

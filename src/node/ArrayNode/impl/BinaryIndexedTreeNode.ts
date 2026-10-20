@@ -78,9 +78,14 @@ export class BinaryIndexedTreeNode extends ArrayNode {
     public treeColor: number[];         // 覆盖条颜色
     public dataColor: boolean[];        // 原始数组节点颜色
 
-    constructor(n: number) {
-        super(new Array(n + 1).fill(0));
+    constructor(n: number, initialValue: number = 0) {
+        super(new Array(n + 1).fill(initialValue));
+        this.data[0] = 0;
         this.tree = new Array(n + 1).fill(0);
+        // 初始原始数据全为 initialValue 时，tree[i] 对应区间长度为 lowbit(i)
+        for (let i = 1; i <= n; ++i) {
+            this.tree[i] = initialValue * (i & -i);
+        }
         this.treeColor = new Array(n + 1).fill(BinaryIndexedTree_TREE_GRAY);
         this.dataColor = new Array(n + 1).fill(BinaryIndexedTree_DATA_NONE);
     }

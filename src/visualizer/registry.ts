@@ -166,7 +166,7 @@ export const REGISTRY: Record<VisualizerTypeValue, RegistryEntry> = {
     [VisualizerType.SEGMENT_TREE]: {
         title: '线段树',
         visualizer: TreeVisualizer,
-        create: () => create(SegmentTree, [1, 2, 3, 4, 5, 6, 7, 8]),
+        create: () => create(SegmentTree, [1, 1, 1, 1, 1, 1, 1, 1]),
     },
     [VisualizerType.TRIE]: {
         title: 'Trie树',
@@ -181,7 +181,7 @@ export const REGISTRY: Record<VisualizerTypeValue, RegistryEntry> = {
     [VisualizerType.BINARY_INDEXED_TREE]: {
         title: '树状数组',
         visualizer: ArrayVisualizer,
-        create: () => create(BinaryIndexedTree, 8),
+        create: () => create(BinaryIndexedTree, 8, 1),
     },
     [VisualizerType.BINARY_SEARCH]: {
         title: '二分查找',
