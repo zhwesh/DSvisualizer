@@ -51,16 +51,26 @@ export class BinarySearchVisualizer extends BaseVisualizer {
 
         switch (method) {
             case '_create':
-                this.handleCreate(node);
+                this.animations.enqueue(() => this.handleCreate(node));
                 break;
             case '_set_left':
             case '_set_right':
             case '_set_mid':
-                this.render();
+                this.enqueueRender();
                 break;
             default:
                 break;
         }
+    }
+
+    /**
+     * 将一次重绘加入动画队列。
+     */
+    private enqueueRender(): void {
+        this.animations.enqueue(async () => {
+            this.render();
+            await this.delay(120);
+        });
     }
 
     private handleCreate(node: BinarySearchNode): void {

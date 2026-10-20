@@ -9,6 +9,8 @@ import { SegmentTreeNode } from '../node/BinaryTreeNode/impl/SegmentTreeNode';
 import { BinaryTreeTraversalNode } from '../node/BinaryTreeNode/impl/BinaryTreeTraversalNode';
 import { AVLTreeNode } from '../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/AVLTreeNode';
 import { RedBlackTreeNode, RedBlackTree_Red } from '../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/RedBlackTreeNode';
+import { TreapTreeNode } from '../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/TreapTreeNode';
+import { ScapegoatTreeNode } from '../node/BinaryTreeNode/impl/BinarySearchTreeNode/impl/ScapegoatTreeNode';
 import { Trie } from '../datastructure/Tree/Trie/Trie';
 import { BinarySearchTree } from '../datastructure/Tree/BinarySearchTree/BinarySearchTree';
 import { AVLTree } from '../datastructure/Tree/BinarySearchTree/AVLTree';
@@ -66,6 +68,19 @@ export class TreeVisualizer extends BaseVisualizer {
     // 遍历结果行的水平范围（用于 viewBox 纳入）
     private answerRowX0 = 0;
     private answerRowX1 = 0;
+    // 替罪羊树子树重构期间显示的中序序列
+    private rebuildSequence: number[] | null = null;
+    // 重构后的子树根节点（此阶段只显示这棵独立子树，暂不连接父节点）
+    private rebuildSubtreeRoot: BinaryTreeNode<any> | null = null;
+    // 重构期间需要暂时从树视图隐藏的原子树节点
+    private rebuildHiddenIds: Set<number> = new Set();
+    // 是否已经排入一次树重绘（同一批原子操作只重绘一次）
+    private renderQueued: boolean = false;
+    private queuedRenderDuration: number = 0;
+    // 同一次算法步骤内发生旋转的节点，重绘后统一闪烁，
+    // 避免旋转、_set_left/_set_right 各自排队导致多次完整渲染。
+    private rotationFlashIds: Set<number> = new Set();
+    private trieRenderQueued: boolean = false;
 
     private static readonly NODE_RADIUS = 15;
     private static readonly H_GAP = 50;
@@ -91,7 +106,7 @@ export class TreeVisualizer extends BaseVisualizer {
         // Trie节点（多叉树节点）
         if (node instanceof TreeNode && !(node instanceof BinaryTreeNode)) {
             this.mode = 'trie';
-            this.renderTrie();
+            this.enqueueTrieRender();
             return;
         }
         // 数据结构实例（非节点）
@@ -104,10 +119,12 @@ export class TreeVisualizer extends BaseVisualizer {
         switch (method) {
             case '_create':
                 this.nodes.set(treeNode.getId(), treeNode);
-                this.render();
+                this.enqueueRender(0);
                 break;
             case '_set_left':
             case '_set_right':
+                this.enqueueRender(260);
+                break;
             case '_set_value':
             case '_set_height':     // AVL高度
             case '_set_color':      // 红黑树颜色
@@ -116,21 +133,97 @@ export class TreeVisualizer extends BaseVisualizer {
             case '_set_sum':        // 线段树和
             case '_set_visited':    // 查找/遍历访问标记
             case '_clear_visited':  // 遍历清空访问
-                this.render();
+                // 只改节点文字/颜色/访问圈，不重建整棵树，避免轻量更新触发完整布局。
+                this.enqueueNodeUpdate(treeNode, method);
                 break;
             case '_rotate_left':
             case '_rotate_right':
-                // 旋转已改变树的形状：重画整棵树并高亮参与旋转的节点
-                this.render();
-                this.flashNode(treeNode.getId());
+                // 旋转往往紧跟 _set_left/_set_right，统一合并成一次重绘，
+                // 只保留一次短动画，避免一次旋转产生多段等待。
+                this.rotationFlashIds.add(treeNode.getId());
+                this.enqueueRender(220);
                 break;
             case '_delete':
                 this.nodes.delete(treeNode.getId());
-                this.render();
+                this.enqueueRender(220);
                 break;
             default:
                 break;
         }
+    }
+
+    /**
+     * 将单个节点的字段更新加入动画队列。
+     * 高度、size、颜色、访问标记等不影响树形布局，直接更新对应 DOM，
+     * 避免每次递增都整树重绘并等待 260ms。
+     */
+    private enqueueNodeUpdate(node: BinaryTreeNode<any>, method: string): void {
+        this.animations.enqueue(() => {
+            const group = this.mainGroup.select(`.tree-node[data-id="${node.getId()}"]`);
+            if (group.empty()) {
+                // 节点 DOM 还没创建（例如刚 create 的新节点），退回一次完整渲染
+                this.enqueueRender(0);
+                return;
+            }
+
+            if (method === '_set_height' || method === '_set_size' || method === '_set_lazy') {
+                group.select('.node-aux')
+                    .text(this.nodeAux(node))
+                    .attr('fill', this.nodeAuxFill(node));
+                return;
+            }
+            if (method === '_set_value' || method === '_set_sum') {
+                group.select('.node-value').text(this.nodeText(node));
+                return;
+            }
+            if (method === '_set_color') {
+                group.select('circle:not(.node-visit-ring)').attr('fill', this.nodeFill(node));
+                group.select('.node-value').attr('fill', this.nodeTextFill(node));
+                return;
+            }
+            if (method === '_set_visited' || method === '_clear_visited') {
+                group.select('.node-visit-ring')
+                    .style('opacity', this.nodeVisited(node) ? 1 : 0);
+            }
+        });
+    }
+
+    /**
+     * 将二叉树重绘加入动画队列。
+     * @param duration 重绘后需要等待的动画时长
+     */
+    private enqueueRender(duration: number): void {
+        this.queuedRenderDuration = Math.max(this.queuedRenderDuration, duration);
+        if (this.renderQueued) {
+            return;
+        }
+        this.renderQueued = true;
+        this.animations.enqueue(async () => {
+            const wait = this.queuedRenderDuration;
+            const flashIds = [...this.rotationFlashIds];
+            this.queuedRenderDuration = 0;
+            this.renderQueued = false;
+            this.rotationFlashIds.clear();
+            // 有旋转时冻结 viewBox，避免整棵树在旋转过程中缩放跳动
+            this.render(flashIds.length === 0);
+            flashIds.forEach(id => this.flashNode(id));
+            await this.delay(wait);
+        });
+    }
+
+    /**
+     * 将 Trie 重绘加入动画队列。
+     */
+    private enqueueTrieRender(): void {
+        if (this.trieRenderQueued) {
+            return;
+        }
+        this.trieRenderQueued = true;
+        this.animations.enqueue(async () => {
+            this.trieRenderQueued = false;
+            this.renderTrie();
+            await this.delay(260);
+        });
     }
 
     /**
@@ -153,20 +246,52 @@ export class TreeVisualizer extends BaseVisualizer {
                 this.mode = node instanceof Trie ? 'trie' : 'binary';
                 this.registerRoot(args);
                 if (this.mode === 'trie') {
-                    this.renderTrie();
+                    this.enqueueTrieRender();
                 } else {
-                    this.render();
+                    this.enqueueRender(260);
                 }
                 break;
             case '_clear':
                 // 清空：数据结构只把根指针置空，旧节点之间仍然互相引用，
                 // 必须同时丢弃本层登记的节点，否则会把已清空的树继续画出来
                 this.nodes.clear();
+                this.rebuildSequence = null;
+                this.rebuildSubtreeRoot = null;
+                this.rebuildHiddenIds.clear();
                 if (this.mode === 'trie') {
-                    this.renderTrie();
+                    this.enqueueTrieRender();
                 } else {
-                    this.render();
+                    this.enqueueRender(260);
                 }
+                break;
+            case '_show_rebuild_sequence': {
+                // 替罪羊树重构开始：原子树暂时从树视图移除，底部显示中序序列
+                const values = args[0];
+                const root = args[1];
+                this.rebuildSequence = Array.isArray(values)
+                    ? values.map(value => Number(value))
+                    : null;
+                this.rebuildSubtreeRoot = null;
+                this.rebuildHiddenIds = root instanceof BinaryTreeNode
+                    ? this.collectSubtreeIds(root)
+                    : new Set<number>();
+                this.enqueueRender(260);
+                break;
+            }
+            case '_show_rebuilt_subtree': {
+                // 重建完成：序列收起到独立子树，此时还没有链接回父节点
+                const root = args[0];
+                this.rebuildSequence = null;
+                this.rebuildSubtreeRoot = root instanceof BinaryTreeNode ? root : null;
+                this.enqueueRender(0);
+                break;
+            }
+            case '_hide_rebuild_sequence':
+                // 新子树准备链接回原位置，恢复整棵树视图
+                this.rebuildSequence = null;
+                this.rebuildSubtreeRoot = null;
+                this.rebuildHiddenIds.clear();
+                this.enqueueRender(260);
                 break;
             default:
                 break;
@@ -191,11 +316,11 @@ export class TreeVisualizer extends BaseVisualizer {
         if (g.empty()) return;
         g.select('circle')
             .transition()
-            .duration(150)
+            .duration(90)
             .attr('stroke', COLOR_FLASH)
             .attr('stroke-width', 4)
             .transition()
-            .duration(350)
+            .duration(130)
             .attr('stroke', () => '#666');
     }
 
@@ -245,25 +370,55 @@ export class TreeVisualizer extends BaseVisualizer {
     }
 
     /**
+     * 收集一棵子树中的所有节点 id。
+     * 替罪羊树重构时用它在树视图中暂时隐藏整棵原子树。
+     */
+    private collectSubtreeIds(root: BinaryTreeNode<any>): Set<number> {
+        const ids = new Set<number>();
+        const traverse = (node: BinaryTreeNode<any> | null): void => {
+            if (!node || ids.has(node.getId())) return;
+            ids.add(node.getId());
+            traverse(node.left);
+            traverse(node.right);
+        };
+        traverse(root);
+        return ids;
+    }
+
+    /**
      * 计算二叉树节点位置（中序遍历决定水平位置、深度决定垂直位置，最后整体居中）
      * 支持多根（原子操作过程中的临时状态），避免整棵子树不可见
      */
     private layoutTree(): BinaryLayoutItem[] {
         const result: BinaryLayoutItem[] = [];
-        const roots = this.collectRoots();
+
+        // 子树重构的中间阶段：原树剩余部分和重建后的独立子树同时显示（森林），
+        // 两者都保留在画布上，最后一步再把独立子树链接回父节点。
+        const detached = this.rebuildSubtreeRoot;
+        const normalRoots = this.collectRoots().filter(
+            root => !this.rebuildHiddenIds.has(root.getId()),
+        );
+        const roots = detached
+            ? [...normalRoots.filter(root => root !== detached), detached]
+            : normalRoots;
         if (roots.length === 0) return result;
 
         // 每个节点只登记一次（防止环导致死循环/重复渲染）
         const visited = new Set<number>();
         const flat: { node: BinaryTreeNode<any>; depth: number }[] = [];
-        const traverse = (n: BinaryTreeNode<any> | null, depth: number): void => {
+        const traverse = (
+            n: BinaryTreeNode<any> | null,
+            depth: number,
+            allowHidden: boolean,
+        ): void => {
             if (!n || visited.has(n.getId())) return;
+            if (!allowHidden && this.rebuildHiddenIds.has(n.getId())) return;
             visited.add(n.getId());
-            traverse(n.left, depth + 1);
+            traverse(n.left, depth + 1, allowHidden);
             flat.push({ node: n, depth });
-            traverse(n.right, depth + 1);
+            traverse(n.right, depth + 1, allowHidden);
         };
-        roots.forEach((root) => traverse(root, 0));
+        roots.forEach((root) => traverse(root, 0, root === detached));
         if (flat.length === 0) return result;
 
         const firstX = TreeVisualizer.START_X - (flat.length - 1) * TreeVisualizer.H_GAP / 2;
@@ -275,21 +430,8 @@ export class TreeVisualizer extends BaseVisualizer {
             });
         });
 
-        // 计算包围盒（含节点半径与上方标签），使整棵树居中于画布中心
-        const tagH = TreeVisualizer.NODE_RADIUS + 12;   // 节点上方标签占用的高度
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        result.forEach(item => {
-            minX = Math.min(minX, item.x - TreeVisualizer.NODE_RADIUS);
-            maxX = Math.max(maxX, item.x + TreeVisualizer.NODE_RADIUS);
-            minY = Math.min(minY, item.y - tagH);
-            maxY = Math.max(maxY, item.y + TreeVisualizer.NODE_RADIUS);
-        });
-        const offsetX = TreeVisualizer.CANVAS_W / 2 - (minX + maxX) / 2;
-        const offsetY = TreeVisualizer.CANVAS_H / 2 - (minY + maxY) / 2;
-        result.forEach(item => {
-            item.x += offsetX;
-            item.y += offsetY;
-        });
+        // 节点坐标保持稳定：旋转时只让相关子树改变深度，不再重算全局偏移。
+        // 画布居中由 fitViewBox 通过 viewBox 完成。
         return result;
     }
 
@@ -308,6 +450,8 @@ export class TreeVisualizer extends BaseVisualizer {
      */
     private nodeAux(node: BinaryTreeNode<any>): string {
         if (node instanceof AVLTreeNode) return 'h=' + node.height;
+        if (node instanceof TreapTreeNode) return 'p=' + node.priority;
+        if (node instanceof ScapegoatTreeNode) return 'size=' + node.size;
         if (node instanceof SegmentTreeNode) {
             return (node.lazy !== null && node.lazy !== 0) ? 'lazy=' + node.lazy : '';
         }
@@ -364,7 +508,7 @@ export class TreeVisualizer extends BaseVisualizer {
     /**
      * 渲染二叉树
      */
-    private render(): void {
+    private render(fit: boolean = true): void {
         if (this.mode !== 'binary') return;
         const layout = this.layoutTree();
 
@@ -430,17 +574,20 @@ export class TreeVisualizer extends BaseVisualizer {
             .attr('fill', (d: BinaryLayoutItem) => this.nodeAuxFill(d.node));
 
         // 4. 位置过渡（enter已在目标位置，此处对已有节点生效）
-        merged.transition('move').duration(300)
+        merged.transition('move').duration(220)
             .attr('transform', (d: BinaryLayoutItem) => `translate(${d.x}, ${d.y})`);
 
         // 5. 退出节点直接移除（不做淡出，避免残留透明度为0的节点）
         nodeGroups.exit().remove();
 
-        // 6. 遍历结果数组（底部）
+        // 6. 遍历结果数组 / 替罪羊树重构序列（底部）
         this.renderAnswerArray();
+        this.renderRebuildSequence();
 
-        // 7. 自适应 viewBox：树的包围盒自动填满画布，任何窗口宽度下数值都清晰可读
-        this.fitViewBox(layout.map(i => ({ x: i.x, y: i.y })));
+        // 7. 自适应 viewBox：旋转过程中冻结，普通更新后重新适配
+        if (fit) {
+            this.fitViewBox(layout.map(i => ({ x: i.x, y: i.y })));
+        }
     }
 
     /**
@@ -473,8 +620,8 @@ export class TreeVisualizer extends BaseVisualizer {
             const pad = (w - contentW) / 2;
             x0 = minX - R - 30 - pad;
         }
-        // 遍历模式：把底部结果行纳入视图（含水平范围，防止标签/首格被裁）
-        if (this.answerNode) {
+        // 遍历/子树重构模式：把底部结果行纳入视图（含水平范围，防止标签/首格被裁）
+        if (this.answerNode || this.rebuildSequence) {
             const answerBottom = 540 + 40 + 10;
             h = Math.max(h, answerBottom - y0);
             const rowX0 = this.answerRowX0 - 20;
@@ -490,35 +637,68 @@ export class TreeVisualizer extends BaseVisualizer {
      */
     private renderEdges(layout: BinaryLayoutItem[]): void {
         const layer = this.edgeLayer();
-        layer.selectAll('*').remove();
 
         const posMap = new Map<number, { x: number; y: number }>();
         layout.forEach(item => posMap.set(item.node.getId(), { x: item.x, y: item.y }));
 
-        const addEdge = (from: { x: number; y: number }, to: { x: number; y: number }): void => {
-            layer.append('line')
-                .attr('class', 'tree-edge')
-                .attr('x1', from.x)
-                .attr('y1', from.y)
-                .attr('x2', to.x)
-                .attr('y2', to.y)
-                .attr('stroke', '#999999')
-                .attr('stroke-width', 1.5);
-        };
+        interface EdgeLayout {
+            childId: number;
+            parentId: number;
+            from: { x: number; y: number };
+            to: { x: number; y: number };
+        }
 
+        const edges: EdgeLayout[] = [];
         layout.forEach(item => {
             const from = { x: item.x, y: item.y };
+            const fromHidden = this.rebuildHiddenIds.has(item.node.getId());
             const left = item.node.left;
             const right = item.node.right;
-            if (left) {
+
+            // 子树重构阶段：普通树不能画一条“假边”连到右侧独立显示的子树
+            const canConnect = (child: BinaryTreeNode<any>): boolean => {
+                if (!this.rebuildSubtreeRoot) return true;
+                if (fromHidden) return true;
+                return !this.rebuildHiddenIds.has(child.getId());
+            };
+
+            if (left && canConnect(left)) {
                 const to = posMap.get(left.getId());
-                if (to) addEdge(from, to);
+                if (to) {
+                    edges.push({ childId: left.getId(), parentId: item.node.getId(), from, to });
+                }
             }
-            if (right) {
+            if (right && canConnect(right)) {
                 const to = posMap.get(right.getId());
-                if (to) addEdge(from, to);
+                if (to) {
+                    edges.push({ childId: right.getId(), parentId: item.node.getId(), from, to });
+                }
             }
         });
+
+        // 以“子节点 id”为 key：旋转时父节点改变，但同一条边会从旧位置平滑移动到新位置
+        const lines = layer.selectAll<SVGLineElement, EdgeLayout>('line.tree-edge')
+            .data(edges, edge => edge.childId);
+
+        const enter = lines.enter()
+            .append('line')
+            .attr('class', 'tree-edge')
+            .attr('x1', edge => edge.from.x)
+            .attr('y1', edge => edge.from.y)
+            .attr('x2', edge => edge.to.x)
+            .attr('y2', edge => edge.to.y)
+            .attr('stroke', '#999999')
+            .attr('stroke-width', 1.5);
+
+        enter.merge(lines)
+            .transition('tree-edge-move')
+            .duration(220)
+            .attr('x1', edge => edge.from.x)
+            .attr('y1', edge => edge.from.y)
+            .attr('x2', edge => edge.to.x)
+            .attr('y2', edge => edge.to.y);
+
+        lines.exit().remove();
     }
 
     // ================== Trie（多叉树）渲染 ==================
@@ -665,7 +845,7 @@ export class TreeVisualizer extends BaseVisualizer {
         merged.select('.node-value')
             .text((d: TrieLayoutItem) => d.node.pass + '/' + d.node.end);
 
-        merged.transition('move').duration(300).attr('transform', (d: TrieLayoutItem) => {
+        merged.transition('move').duration(220).attr('transform', (d: TrieLayoutItem) => {
             const p = posMap.get(d.node.getId())!;
             return `translate(${p.x}, ${p.y})`;
         });
@@ -685,7 +865,10 @@ export class TreeVisualizer extends BaseVisualizer {
      */
     private handleAnswerArray(node: ArrayNode): void {
         this.answerNode = node;
-        this.renderAnswerArray();
+        this.animations.enqueue(async () => {
+            this.renderAnswerArray();
+            await this.delay(180);
+        });
     }
 
     /**
@@ -738,6 +921,57 @@ export class TreeVisualizer extends BaseVisualizer {
         });
     }
 
+    /**
+     * 渲染替罪羊树重构期间底部的“中序序列”行。
+     * 子树在树视图中暂时隐藏，用户先看到它展开成有序序列。
+     */
+    private renderRebuildSequence(): void {
+        this.mainGroup.selectAll('.rebuild-row').remove();
+        if (!this.rebuildSequence) return;
+
+        const data = this.rebuildSequence;
+        const n = data.length;
+        // 与数组可视化器的单元格尺寸保持一致，避免序列行看起来过小
+        const cellW = 60;
+        const cellH = 50;
+        const centerX = 600;
+        const startX = centerX + 35 - (n * cellW) / 2;
+        const y = 530;
+
+        this.answerRowX0 = startX - 80;
+        this.answerRowX1 = startX + n * cellW;
+
+        const g = this.mainGroup.append('g').attr('class', 'rebuild-row');
+        g.append('text')
+            .attr('x', startX - 80)
+            .attr('y', y + cellH / 2 + 5)
+            .style('font-size', '14px')
+            .style('font-family', '"JetBrains Mono", SimHei, monospace')
+            .style('fill', '#3b6e99')
+            .text('中序序列');
+
+        data.forEach((v, i) => {
+            const cell = g.append('g')
+                .attr('transform', `translate(${startX + i * cellW}, ${y})`)
+                .style('opacity', 0);
+            cell.append('rect')
+                .attr('width', cellW)
+                .attr('height', cellH)
+                .attr('fill', '#eef6ff')
+                .attr('stroke', '#5b8db8')
+                .attr('stroke-width', 1.5);
+            cell.append('text')
+                .attr('x', cellW / 2)
+                .attr('y', cellH / 2 + 6)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '16px')
+                .style('font-family', '"JetBrains Mono", SimHei, monospace')
+                .style('fill', '#2d3748')
+                .text(String(v));
+            cell.transition().delay(i * 45).duration(180).style('opacity', 1);
+        });
+    }
+
     clear(): void {
         super.clear();
         this.nodes.clear();
@@ -746,5 +980,12 @@ export class TreeVisualizer extends BaseVisualizer {
         this.answerNode = null;
         this.answerRowX0 = 0;
         this.answerRowX1 = 0;
+        this.rebuildSequence = null;
+        this.rebuildSubtreeRoot = null;
+        this.rebuildHiddenIds.clear();
+        this.renderQueued = false;
+        this.queuedRenderDuration = 0;
+        this.rotationFlashIds.clear();
+        this.trieRenderQueued = false;
     }
 }

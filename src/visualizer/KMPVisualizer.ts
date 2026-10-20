@@ -29,30 +29,40 @@ export class KMPVisualizer extends BaseVisualizer {
                 this.ds = node;
                 this.alignOffset = 0;
             }
-            this.render();
+            this.enqueueRender();
             return;
         }
         if (!this.ds) return;
         switch (method) {
             case '_set_str_ptr':
             case '_set_template_ptr':
-                this.render();
+                this.enqueueRender();
                 break;
             case '_align':
                 this.alignOffset = (args[0] as number) - (args[1] as number);
-                this.render();
+                this.enqueueRender();
                 break;
             case '_set_prefix_color':
             case '_set_suffix_color':
-                this.render();
+                this.enqueueRender();
                 break;
             case '_set_value':
             case '_clear_color':
-                this.render();
+                this.enqueueRender();
                 break;
             default:
                 break;
         }
+    }
+
+    /**
+     * 将一次重绘加入动画队列。
+     */
+    private enqueueRender(): void {
+        this.animations.enqueue(async () => {
+            this.render();
+            await this.delay(120);
+        });
     }
 
     private render(): void {
@@ -66,32 +76,35 @@ export class KMPVisualizer extends BaseVisualizer {
         const tpl = ds.template || '';
         const next = ds.data || [];
         const offset = this.alignOffset || 0;
-        // 三行格子起点（主串居中；模式串相对主串偏移 offset 格）
-        const strX0 = (SortCanvasW - str.length * SortCellW) / 2;
-        const tplX0 = (SortCanvasW - tpl.length * SortCellW) / 2 + offset * SortCellW;
-        const nextX0 = (SortCanvasW - Math.max(1, next.length) * SortCellW) / 2;
+        // str / template / next 共用同一个左起点；template 通过 offset 在 str 上滑动
+        const maxLen = Math.max(str.length, tpl.length, next.length, 1);
+        const baseX0 = (SortCanvasW - maxLen * SortCellW) / 2;
+        const strX0 = baseX0;
+        const tplX0 = baseX0 + offset * SortCellW;
+        const nextX0 = tplX0;
 
         // 1. 主串
         this.renderRow(str, strX0, SortRowStrY, 0, ds.strPtr, 'str');
         // 2. 模式串（前后缀染色 + 指针）
         this.renderRow(tpl, tplX0, SortRowTplY, 0, ds.templatePtr, 'tpl');
         this.applyColors(tpl, ds.prefixColor, ds.suffixColor);
-        // 3. next 数组（只渲染模式串长度）
+        // 3. next 数组（只渲染模式串长度），与模式串保持同步平移
         this.renderNext(next, nextX0, Math.max(1, tpl.length));
-        // 行标题
-        const labelY = SortRowStrY - 26;
-        this.mainGroup.append('text')
-            .attr('x', 60).attr('y', labelY + 26)
-            .style('font-size', '14px').style('fill', '#555')
-            .text('主串 str:');
-        this.mainGroup.append('text')
-            .attr('x', 60).attr('y', SortRowTplY + 26)
-            .style('font-size', '14px').style('fill', '#555')
-            .text('模式串:');
-        this.mainGroup.append('text')
-            .attr('x', 60).attr('y', SortRowNextY + 26)
-            .style('font-size', '14px').style('fill', '#555')
-            .text('next:');
+
+        // 行标题：贴在各自数组左侧，避免被 viewBox 裁掉
+        const addLabel = (x: number, y: number, text: string): void => {
+            this.mainGroup.append('text')
+                .attr('x', x)
+                .attr('y', y + SortCellH / 2 + 5)
+                .attr('text-anchor', 'end')
+                .style('font-size', '14px')
+                .style('font-family', '"JetBrains Mono", SimHei, monospace')
+                .style('fill', '#555')
+                .text(text);
+        };
+        addLabel(strX0 - 14, SortRowStrY, 'str');
+        addLabel(tplX0 - 14, SortRowTplY, 'template');
+        addLabel(nextX0 - 14, SortRowNextY, 'next');
         this.fitViewBox();
     }
 
@@ -174,10 +187,21 @@ export class KMPVisualizer extends BaseVisualizer {
             this.svg.attr('viewBox', '0 0 400 200');
             return;
         }
-        const maxLen = Math.max(this.ds.str.length, this.ds.template.length, 1);
-        const totalW = maxLen * SortCellW + 100;
-        const x0 = (SortCanvasW - totalW) / 2;
-        this.svg.attr('viewBox', `${Math.max(0, x0 - 30)} 30 ${Math.min(SortCanvasW, totalW + 60)} 360`);
+        const maxLen = Math.max(
+            this.ds.str.length,
+            this.ds.template.length,
+            this.ds.data.length,
+            1,
+        );
+        const offset = this.alignOffset || 0;
+        const baseX0 = (SortCanvasW - maxLen * SortCellW) / 2;
+        const tplX0 = baseX0 + offset * SortCellW;
+        const left = Math.max(0, Math.min(baseX0, tplX0) - 120);
+        const right = Math.max(
+            baseX0 + maxLen * SortCellW,
+            tplX0 + Math.max(1, this.ds.template.length) * SortCellW,
+        ) + 40;
+        this.svg.attr('viewBox', `${left} 30 ${right - left} 360`);
     }
 
     clear(): void {

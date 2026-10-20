@@ -5,6 +5,7 @@ defineProps<{
     size: number;
     currentOp: string;
     result: string | null;
+    running: boolean;
 }>();
 </script>
 
@@ -19,10 +20,15 @@ defineProps<{
         <template v-else>
             <div class="stat-line">节点数量: {{ size }}</div>
         </template>
-        <div class="stat-op" :class="{ 'is-result': result !== null }">
-            <span class="stat-op-label">{{ result !== null ? '结果' : '当前操作' }}：</span>
-            <span class="stat-op-value">{{ result !== null ? result : currentOp }}</span>
-        </div>
+    </div>
+
+    <div
+        v-if="result !== null || running"
+        class="operation-panel"
+        :class="{ 'is-result': result !== null }"
+    >
+        <span class="operation-label">{{ result !== null ? '结果' : '当前操作' }}：</span>
+        <span class="operation-value">{{ result !== null ? result : currentOp }}</span>
     </div>
 </template>
 
@@ -43,33 +49,40 @@ defineProps<{
     z-index: 2;
 }
 
-.stat-op {
+.operation-panel {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
     display: flex;
     align-items: baseline;
     gap: 2px;
-    max-width: 320px;
-    margin-top: 5px;
-    padding-top: 5px;
-    border-top: 1px solid #e8edf3;
+    max-width: min(420px, calc(100% - 24px));
+    padding: 7px 12px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #e0e4ea;
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', SimHei, monospace;
     font-size: 13px;
     line-height: 1.5;
+    pointer-events: none;
+    z-index: 2;
 }
 
-.stat-op-label {
+.operation-label {
     flex: none;
     color: #4a5568;
 }
 
-.stat-op-value {
+.operation-value {
     color: #1f2937;
     word-break: break-word;
 }
 
-.stat-op.is-result .stat-op-label {
+.operation-panel.is-result .operation-label {
     color: #15803d;
 }
 
-.stat-op.is-result .stat-op-value {
+.operation-panel.is-result .operation-value {
     color: #15803d;
     font-weight: 700;
 }

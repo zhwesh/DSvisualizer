@@ -42,15 +42,20 @@ export class GraphVisualizer extends BaseVisualizer {
 
     constructor(svg: d3.Selection<SVGSVGElement, unknown, null, undefined>) {
         super(svg);
-        // 有向边箭头
+        // 有向边箭头：每种边颜色一个 marker，保证箭头和边同步变色
         const defs = this.svg.select('defs');
         if (defs.empty()) {
             this.svg.append('defs');
         }
-        const arrow = this.svg.select<SVGMarkerElement>('#g-arrow');
-        if (arrow.empty()) {
+        const markers = [
+            { id: 'g-arrow-none', fill: EDGE_NONE },
+            { id: 'g-arrow-green', fill: EDGE_GREEN },
+            { id: 'g-arrow-blue', fill: EDGE_BLUE },
+        ];
+        markers.forEach(marker => {
+            if (!this.svg.select(`#${marker.id}`).empty()) return;
             this.svg.select('defs').append('marker')
-                .attr('id', 'g-arrow')
+                .attr('id', marker.id)
                 .attr('viewBox', '0 0 10 10')
                 .attr('refX', 9)
                 .attr('refY', 5)
@@ -59,8 +64,17 @@ export class GraphVisualizer extends BaseVisualizer {
                 .attr('orient', 'auto')
                 .append('path')
                 .attr('d', 'M0,0L10,5L0,10Z')
-                .attr('fill', '#666');
-        }
+                .attr('fill', marker.fill);
+        });
+    }
+
+    /**
+     * 根据边颜色选择对应箭头 marker，保证箭头与边同步变色
+     */
+    private markerFor(color: string): string {
+        if (color === EDGE_GREEN) return 'url(#g-arrow-green)';
+        if (color === EDGE_BLUE) return 'url(#g-arrow-blue)';
+        return 'url(#g-arrow-none)';
     }
 
     /**
@@ -102,27 +116,48 @@ export class GraphVisualizer extends BaseVisualizer {
             if (this.isGraphNode(node)) {
                 this.ds = node;
             }
-            this.render();
+            this.enqueueRender();
             return;
         }
         if (!this.ds) return;
+
         switch (method) {
-            case '_set_node_color':
-                this.animateNode(args[0] as number);
+            case '_set_node_color': {
+                const index = args[0] as number;
+                const color = this.ds.nodeColor?.[index];
+                this.animations.enqueue(() => this.animateNode(index, color));
                 break;
-            case '_set_edge_color':
-                this.animateEdge(args[0] as number, args[1] as number);
+            }
+            case '_set_edge_color': {
+                const u = args[0] as number;
+                const v = args[1] as number;
+                const color = this.ds.edgeColor?.[u]?.get(v);
+                this.animations.enqueue(() => this.animateEdge(u, v, color));
                 break;
+            }
             case '_set_dis':
-                this.updateDis();
+                this.animations.enqueue(async () => {
+                    this.updateDis();
+                    await this.delay(30);
+                });
                 break;
             case '_clear':
             case '_sort_edges':
-                this.render();
+                this.enqueueRender();
                 break;
             default:
                 break;
         }
+    }
+
+    /**
+     * 将图重绘加入动画队列。
+     */
+    private enqueueRender(): void {
+        this.animations.enqueue(async () => {
+            this.render();
+            await this.delay(0);
+        });
     }
 
     /**
@@ -271,7 +306,7 @@ export class GraphVisualizer extends BaseVisualizer {
                 .attr('x2', x2).attr('y2', y2)
                 .attr('stroke', color)
                 .attr('stroke-width', 2.5)
-                .attr('marker-end', directed ? 'url(#g-arrow)' : null);
+                .attr('marker-end', directed ? this.markerFor(color) : null);
 
             // 沿边尝试多个位置：中点、偏向起点/终点、上下左右偏移，避开节点和已有标签
             const nx = -dy / len;
@@ -392,33 +427,41 @@ export class GraphVisualizer extends BaseVisualizer {
     /**
      * 节点颜色过渡
      */
-    private animateNode(i: number): void {
-        const ds = this.ds;
-        if (!ds) return;
-        this.renderNodes();   // 结构简单，直接重绘保持一致性
-        this.fitViewBox();
+    private async animateNode(i: number, color: number | undefined): Promise<void> {
         const g = this.mainGroup.select(`.graph-node[data-node="${i}"]`);
-        if (g.empty()) return;
-        g.select('circle')
+        if (g.empty()) {
+            this.renderNodes();
+            this.fitViewBox();
+            return;
+        }
+        await g.select('circle')
             .transition()
-            .duration(180)
-            .attr('fill', this.nodeFill(ds.nodeColor?.[i]));
+            .duration(this.duration(110))
+            .attr('fill', this.nodeFill(color))
+            .end()
+            .catch(() => undefined);
     }
 
     /**
      * 边颜色过渡
      */
-    private animateEdge(u: number, v: number): void {
+    private async animateEdge(u: number, v: number, colorValue: number | undefined): Promise<void> {
         const ds = this.ds;
         if (!ds) return;
-        const key = ds instanceof UndirectedGraphNode
-            ? `${Math.min(u, v)},${Math.max(u, v)}`
-            : `${u},${v}`;
+        const directed = !(ds instanceof UndirectedGraphNode);
+        const key = directed
+            ? `${u},${v}`
+            : `${Math.min(u, v)},${Math.max(u, v)}`;
+        const color = this.edgeStroke(colorValue);
         const line = this.mainGroup.select(`line[data-edge="${key}"]`);
         if (!line.empty()) {
-            line.transition()
-                .duration(180)
-                .attr('stroke', this.edgeStroke(ds.edgeColor?.[u]?.get(v)));
+            // 箭头 marker 立即切换到新颜色，边本身保留颜色过渡
+            line.attr('marker-end', directed ? this.markerFor(color) : null);
+            await line.transition()
+                .duration(this.duration(110))
+                .attr('stroke', color)
+                .end()
+                .catch(() => undefined);
         }
     }
 

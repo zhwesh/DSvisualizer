@@ -140,7 +140,6 @@ export class ArrayList {
         messageController.message("将元素向后移动", MessageType.INFO);
         for (let i = this.sz; i > idx; --i) {
             this.arr._swap_value(i, this.arr, i - 1);
-            await stepController.wait();
         }
         ++this.sz;
 

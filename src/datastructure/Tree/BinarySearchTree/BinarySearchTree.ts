@@ -10,6 +10,30 @@ let stepController = StepController.getStepController();
  * 二叉搜索树
  */
 export class BinarySearchTree {
+
+    // 当前被标记为 visited 的节点队列
+    private visitedNodes: BinarySearchTreeNode<any>[] = [];
+
+    /**
+     * 清除队列中所有节点的 visited 标记。
+     */
+    private clearVisited(): void {
+        for (const node of this.visitedNodes) {
+            node._set_visited(false);
+        }
+        this.visitedNodes.length = 0;
+    }
+
+    /**
+     * 标记当前访问节点，并清除之前的 visited 标记。
+     * @param node 当前访问节点
+     */
+    private setkVisited(node: BinarySearchTreeNode<any>): void {
+        this.clearVisited();
+        node._set_visited(true);
+        this.visitedNodes.push(node);
+    }
+
     /**
      * 设置根节点
      * @param root 要设置的根节点
@@ -24,6 +48,7 @@ export class BinarySearchTree {
      * 动画效果：清空二叉搜索树
      */
     public _clear(): void {
+        this.clearVisited();
         this._set_root(null);
         this.sz = 0;
     }
@@ -74,20 +99,17 @@ export class BinarySearchTree {
     public async contains(val: number): Promise<boolean> {
         let x = this.root;
 
-        await stepController.wait();
         messageController.message("从根节点开始查找 " + val, MessageType.INFO);
+        await stepController.wait();
         while (x !== null) {
-            if (x.val === val) {
-                x._set_visited(true);
+            this.setkVisited(x);
+            if (x.val === val) {    
                 await stepController.wait();
-                x._set_visited(false);
+                this.clearVisited();
                 messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
                 return true;
             }
             const toLeft = val < x.val!;
-            x._set_visited(true);
-            await stepController.wait();
-            x._set_visited(false);
             if (toLeft) {
                 messageController.message(
                     val + " < " + x.val + "，向左查找",
@@ -101,8 +123,10 @@ export class BinarySearchTree {
                 );
                 x = x.right;
             }
+            await stepController.wait();
         }
 
+        this.clearVisited();
         messageController.message("值'" + val + "'不存在", MessageType.WARNING);
         return false;
     }
@@ -113,28 +137,28 @@ export class BinarySearchTree {
      */
     public async insert(val: number): Promise<void> {
         if (this.root === null) {
-            await stepController.wait();
             messageController.message("创建根节点", MessageType.INFO);
             this._set_root(create(BinarySearchTreeNode, val, null, null));
             ++this.sz;
+            await stepController.wait();
 
             messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
             return;
         }
 
-        await stepController.wait();
         messageController.message("从根节点开始查找插入位置", MessageType.INFO);
         let x: BinarySearchTreeNode<any> = this.root;
+        await stepController.wait();
         while (true) {
+            this.setkVisited(x);
             if (x.val === val) {
+                await stepController.wait();
+                this.clearVisited();
                 messageController.message("值'" + val + "'已存在", MessageType.WARNING);
                 return;
             }
             const toLeft = val < x.val!;
 
-            x._set_visited(true);
-            await stepController.wait();
-            x._set_visited(false);
             if (toLeft) {
                 messageController.message(
                     val + " 小于 " + x.val + "，向左查找",
@@ -147,13 +171,13 @@ export class BinarySearchTree {
                 );
             }
             const next = toLeft ? x.left : x.right;
+            await stepController.wait();
 
             if (next === null) {
-                await stepController.wait();
                 messageController.message("创建新节点", MessageType.INFO);
                 const node = create(BinarySearchTreeNode, val, null, null);
-
                 await stepController.wait();
+
                 messageController.message("将新节点链接到树中", MessageType.INFO);
                 if (toLeft) {
                     x._set_left(node);
@@ -161,7 +185,9 @@ export class BinarySearchTree {
                     x._set_right(node);
                 }
                 ++this.sz;
+                await stepController.wait();
 
+                this.clearVisited();
                 messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
                 return;
             }
@@ -174,16 +200,13 @@ export class BinarySearchTree {
      * @param val 要删除的值
      */
     public async delete(val: number): Promise<void> {
-        await stepController.wait();
         messageController.message("从根节点开始查找待删除节点", MessageType.INFO);
-
         let x: BinarySearchTreeNode<any> | null = this.root;
         let f: BinarySearchTreeNode<any> | null = null;
+        await stepController.wait();
         while (x !== null && x.val !== val) {
             const toLeft = val < x.val!;
-            x._set_visited(true);
-            await stepController.wait();
-            x._set_visited(false);
+            this.setkVisited(x);
             if (toLeft) {
                 messageController.message(
                     val + " < " + x.val + "，向左查找",
@@ -197,17 +220,17 @@ export class BinarySearchTree {
             }
             f = x;
             x = toLeft ? x.left : x.right;
+            await stepController.wait();
         }
         if (x === null) {
+            this.clearVisited();
             messageController.message("值'" + val + "'不存在", MessageType.WARNING);
             return;
         }
 
         // 命中：高亮待删除节点，直至删除完成
-        x._set_visited(true);
-        const target = x;
+        this.setkVisited(x);
         if (x.left !== null && x.right !== null) {
-            await stepController.wait();
             messageController.message(
                 "待删除节点有两个孩子，查找中序后继节点",
                 MessageType.INFO
@@ -218,18 +241,18 @@ export class BinarySearchTree {
                 fy = y;
                 y = y.left;
             }
-
             await stepController.wait();
+
             messageController.message("将后继节点的值复制到待删除节点", MessageType.INFO);
             x._set_value(y.val);
             x = y;
             f = fy;
+            await stepController.wait();
         }
 
         const child = (x.left !== null) ? x.left : x.right;
 
-        await stepController.wait();
-        messageController.message("删除节点，并将其孩子链接到父节点", MessageType.INFO);
+        messageController.message("并将其孩子链接到父节点", MessageType.INFO);
         if (f === null) {
             this._set_root(child);
         } else if (f.left === x) {
@@ -237,12 +260,13 @@ export class BinarySearchTree {
         } else {
             f._set_right(child);
         }
-
         await stepController.wait();
+
         messageController.message("删除节点", MessageType.INFO);
         x._delete();
-        target._set_visited(false);     // 展示后恢复原色
         --this.sz;
+        this.clearVisited();
+        await stepController.wait();
 
         messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);
     }

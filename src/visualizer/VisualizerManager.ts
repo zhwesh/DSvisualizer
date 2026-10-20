@@ -108,6 +108,13 @@ export class VisualizerManager {
     }
 
     /**
+     * 等待当前可视化器的动画队列空闲。
+     */
+    waitForAnimations(): Promise<void> {
+        return this.currentVisualizer?.waitForAnimations() ?? Promise.resolve();
+    }
+
+    /**
      * 处理原子操作回调（全局分发）
      */
     private handleOp(node: object, method: string, args: unknown[]): void {

@@ -83,7 +83,7 @@ export class MergeSort {
         await stepController.wait();
         messageController.message("将临时结果写回数组", MessageType.INFO);
         for (let i = 0; i < tmp.data.length; ++i) {
-            this.node._set_value(l + i, tmp.data[i]);
+            this.node._swap_value(l + i, tmp, i);
         }
         tmp._delete();
 

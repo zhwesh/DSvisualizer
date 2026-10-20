@@ -159,8 +159,6 @@ const submitDialog = (): void => {
         <h2 class="panel-title">操作台</h2>
 
         <div v-for="(group, gi) in groups" :key="gi" class="control-group-wrap">
-            <p v-if="group.hint" class="control-hint">{{ group.hint }}</p>
-
             <button
                 v-for="(button, bi) in group.buttons"
                 :key="bi"
@@ -249,13 +247,6 @@ const submitDialog = (): void => {
     display: flex;
     flex-direction: column;
     gap: 8px;
-}
-
-.control-hint {
-    margin: 0 0 4px;
-    font-size: 13px;
-    line-height: 1.5;
-    color: #7b8794;
 }
 
 .action-btn {

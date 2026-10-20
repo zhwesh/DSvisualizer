@@ -16,6 +16,14 @@ export const StepStatus = {
 } as const;
 
 /**
+ * 动画屏障接口。
+ * StepController 只依赖这个抽象，不直接依赖可视化层。
+ */
+export interface AnimationBarrier {
+    waitForIdle(): Promise<void>;
+}
+
+/**
  * 单步流程控制器
  * 
  * 图形界面层/可视化层只需调用setTimeInterval与setStatus两个接口：
@@ -30,6 +38,10 @@ export class StepController {
     private status: number = 0;
     // 动画播放的时间间隔（秒）
     private timeInterval: number = 1;
+    // 动画队列屏障（由页面层注入）
+    private animationBarrier: AnimationBarrier | null = null;
+    // 是否正在等待动画屏障；此期间忽略新的单步请求，避免跳过下一次暂停
+    private waitingForAnimation: boolean = false;
     // 单例对象
     static stepController: StepController | null = null;
 
@@ -53,11 +65,30 @@ export class StepController {
     }
 
     /**
+     * 设置动画屏障（由页面层调用）。
+     * @param barrier 动画屏障，传 null 表示清除
+     */
+    public setAnimationBarrier(barrier: AnimationBarrier | null): void {
+        this.animationBarrier = barrier;
+    }
+
+    /**
+     * 当前是否为快进模式。
+     */
+    public isFastMode(): boolean {
+        return this.timeInterval <= 0;
+    }
+
+    /**
      * 设置状态（由图形界面层调用）
      * @param status 新状态
      */
     public setStatus(status: number): void {
         if (status === StepStatus.STEP_EXECUTION) {
+            // 动画还没播完时点击单步不生效，等待动画结束后的下一次暂停
+            if (this.waitingForAnimation) {
+                return;
+            }
             // 单步执行：放行当前挂起的复合操作一拍
             if (this.pendingResolve !== null) {
                 const resolve = this.pendingResolve;
@@ -87,19 +118,35 @@ export class StepController {
      * 提供给算法层的复合操作
      * 算法层调用await wait();等待下一步执行
      */
-    public wait(): Promise<void> {
-        if (this.status === StepStatus.STEP_EXECUTION) {    // 单步执行：直接放行，并把状态重置回暂停，等待下一次单步执行
-            this.status = StepStatus.PAUSE_OR_FREE;    
+    public async wait(): Promise<void> {
+        await this.waitForPermission();
+
+        // 无论播放、单步还是快进，都必须等上一步动画全部播完再执行下一步。
+        // 快进模式通过把动画时长压缩为 0 来保证速度，而不是跳过串行屏障。
+        if (this.animationBarrier !== null) {
+            this.waitingForAnimation = true;
+            try {
+                await this.animationBarrier.waitForIdle();
+            } finally {
+                this.waitingForAnimation = false;
+            }
+        }
+    }
+
+    /**
+     * 等待算法层获得执行下一步的权限。
+     */
+    private waitForPermission(): Promise<void> {
+        if (this.status === StepStatus.STEP_EXECUTION) {
+            this.status = StepStatus.PAUSE_OR_FREE;
             return Promise.resolve();
-        } else if (this.status === StepStatus.PLAYING) {    // 正在播放：阻塞timeInterval秒后放行
+        } else if (this.status === StepStatus.PLAYING) {
             return new Promise<void>((resolve) => {
                 setTimeout(
                     () => {
-                        // 延时结束后，再次检查当前的状态
                         if (this.status === StepStatus.PLAYING) {
                             resolve();
                         } else if (this.status === StepStatus.STEP_EXECUTION) {
-                            // 播放中途点击单步执行，重置为暂停
                             this.status = StepStatus.PAUSE_OR_FREE;
                             resolve();
                         } else {
@@ -109,7 +156,7 @@ export class StepController {
                     this.timeInterval * 1000
                 );
             });
-        } else {                                            // 暂停状态：直接挂起，等待用户操作唤醒
+        } else {
             return new Promise<void>((resolve) => {
                 this.pendingResolve = resolve;
             });

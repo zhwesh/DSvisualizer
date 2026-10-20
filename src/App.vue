@@ -30,8 +30,12 @@ import { LinkedDeque } from './datastructure/Queue/LinkedDeque';
 import { BinarySearchTree } from './datastructure/Tree/BinarySearchTree/BinarySearchTree';
 import { AVLTree } from './datastructure/Tree/BinarySearchTree/AVLTree';
 import { RedBlackTree } from './datastructure/Tree/BinarySearchTree/RedBlackTree';
+import { TreapTree } from './datastructure/Tree/BinarySearchTree/TreapTree';
+import { ScapegoatTree } from './datastructure/Tree/BinarySearchTree/ScapegoatTree';
 import { SegmentTree } from './datastructure/Tree/SegmentTree/SegmentTree';
 import { Trie } from './datastructure/Tree/Trie/Trie';
+import { UnionFindSet } from './datastructure/Other/UnionFindSet';
+import { BinaryIndexedTree } from './datastructure/Other/BinaryIndexedTree';
 // 算法
 import { BinarySearch } from './algorithm/List/BinarySearch';
 import { BinaryTreeTraversal } from './algorithm/Tree/BinaryTreeTraversal';
@@ -65,6 +69,12 @@ const OP = {
     DEQUE_GET_LAST: '取队尾',
     SEG_ADD: '区间加',
     SEG_QUERY: '区间求和',
+    UNION_FIND_UNION: '合并集合',
+    UNION_FIND_FIND: '查找根节点',
+    UNION_FIND_SIZE: '查询集合大小',
+    UNION_FIND_SAME: '判断是否同集合',
+    BIT_ADD: '单点加',
+    BIT_QUERY: '区间求和',
     TRIE_INSERT: '插入字符串',
     TRIE_FIND: '查找字符串',
     TRIE_PREFIX: '查询前缀',
@@ -357,6 +367,10 @@ let bsDataLen = 10;
 let segDataLen = 8;
 let traversalNodeCount = 7;
 let graphNodeCnt = 6;
+const UNION_FIND_DEFAULT_SIZE = 10;
+const BIT_DEFAULT_SIZE = 8;
+let unionFindSize = UNION_FIND_DEFAULT_SIZE;
+let bitSize = BIT_DEFAULT_SIZE;
 // 排序当前数组（页面层持有，输入框同步显示�?
 const sortData = ref<number[]>([]);
 // 树插入自动编号（�?开始，切换菜单重置�?
@@ -446,6 +460,45 @@ const validateSegmentRange = (values: Record<string, string>): string | null => 
 
 const validateTrieWord = (raw: string): string | null => {
     return /^[a-z]+$/.test(raw.trim()) ? null : '请输入仅包含小写字母的字符串';
+};
+
+const validateUnionFindIndex = (raw: string): string | null => {
+    const index = Number(raw);
+    if (!Number.isInteger(index)) return '节点编号必须为整数';
+    if (index < 0 || index >= unionFindSize) {
+        return `节点编号需在 0 到 ${unionFindSize - 1} 之间`;
+    }
+    return null;
+};
+
+const validateUnionFindSize = (raw: string): string | null => {
+    const n = Number(raw);
+    if (!Number.isInteger(n)) return '元素个数必须为整数';
+    if (n < 2 || n > 20) return '元素个数需在 2 到 20 之间';
+    return null;
+};
+
+const validateBitIndex = (raw: string): string | null => {
+    const index = Number(raw);
+    if (!Number.isInteger(index)) return '下标必须为整数';
+    if (index < 1 || index > bitSize) return `下标需在 1 到 ${bitSize} 之间`;
+    return null;
+};
+
+const validateBitRange = (values: Record<string, string>): string | null => {
+    const l = Number(values.l);
+    const r = Number(values.r);
+    if (!Number.isInteger(l) || !Number.isInteger(r)) return '区间端点必须为整数';
+    if (l < 1 || r > bitSize) return `区间需在 1 到 ${bitSize} 之间`;
+    if (l > r) return '左端点不能大于右端点';
+    return null;
+};
+
+const validateBitSize = (raw: string): string | null => {
+    const n = Number(raw);
+    if (!Number.isInteger(n)) return '元素个数必须为整数';
+    if (n < 1 || n > 20) return '元素个数需在 1 到 20 之间';
+    return null;
 };
 
 // ---------- 随机输入辅助 ----------
@@ -609,6 +662,43 @@ const segDataParam: ControlInputDef = {
     ...textParam('data', '初始数组', '如 1,2,3'),
     random: () => randomNumberList(),
 };
+const unionFindUParam: ControlInputDef = {
+    ...numberParam('u', '节点 u'),
+    random: () => String(randomInt(0, Math.max(0, unionFindSize - 1))),
+};
+const unionFindVParam: ControlInputDef = {
+    ...numberParam('v', '节点 v'),
+    random: () => String(randomInt(0, Math.max(0, unionFindSize - 1))),
+};
+const unionFindXParam: ControlInputDef = {
+    ...numberParam('x', '节点 x'),
+    random: () => String(randomInt(0, Math.max(0, unionFindSize - 1))),
+};
+const unionFindSizeParam: ControlInputDef = {
+    ...numberParam('n', '元素个数'),
+    random: () => String(randomInt(6, 12)),
+};
+const bitIndexParam: ControlInputDef = {
+    ...numberParam('idx', '下标'),
+    placeholder: '从 1 开始',
+    random: () => String(randomInt(1, Math.max(1, bitSize))),
+};
+const bitValueParam: ControlInputDef = {
+    ...numberParam('val', '增量'),
+    random: () => String(randomInt(-10, 20)),
+};
+const bitLeftParam: ControlInputDef = {
+    ...numberParam('l', '左端点'),
+    random: () => String(randomInt(1, Math.max(1, bitSize))),
+};
+const bitRightParam: ControlInputDef = {
+    ...numberParam('r', '右端点'),
+    random: () => String(randomInt(1, Math.max(1, bitSize))),
+};
+const bitSizeParam: ControlInputDef = {
+    ...numberParam('n', '元素个数'),
+    random: () => String(randomInt(6, 12)),
+};
 const wordParam: ControlInputDef = {
     ...textParam('word', '字符串（小写字母）'),
     random: () => randomLowerWord(),
@@ -628,6 +718,16 @@ const graphEdgesParam: ControlInputDef = {
 const highlightListIndex = (idx: number): void => {
     const vis = visualizerManager.getCurrentVisualizer();
     if (vis instanceof LinkedListVisualizer) vis.highlightIndex(idx);
+};
+
+/**
+ * 告诉链式可视化器：下一次新建节点在最终结构中的数据下标。
+ * 头插/栈 push 为 0，尾插为当前长度，中间插入为 idx。
+ * @param idx 新节点最终的数据下标
+ */
+const setListInsertHint = (idx: number): void => {
+    const vis = visualizerManager.getCurrentVisualizer();
+    if (vis instanceof LinkedListVisualizer) vis.setPendingInsertIndex(idx);
 };
 
 // ---------- 消息 ----------
@@ -673,6 +773,7 @@ const runOp = (op: () => Promise<void>): void => {
             try {
                 await op();
             } catch (error) {
+                currentOp.value = '';
                 addMessage('操作执行出错：' + (error instanceof Error ? error.message : String(error)),
                     MessageType.ERROR);
             }
@@ -718,6 +819,8 @@ const handlePause = (): void => {
 };
 const handleStep = (): void => {
     if (!opRunning.value) return;
+    // 单步执行使用正常动画速度，并等待动画屏障
+    stepController.setTimeInterval(PLAY_TIME_INTERVAL);
     stepController.setStatus(StepStatus.STEP_EXECUTION);
 };
 
@@ -738,10 +841,15 @@ const menuTree: MenuNode[] = [
                 ],
             },
             {
-                label: '栈与队列',
+                label: '栈',
                 children: [
                     menuItem(VisualizerType.ARRAY_STACK),
                     menuItem(VisualizerType.LINKED_STACK),
+                ],
+            },
+            {
+                label: '队列',
+                children: [
                     menuItem(VisualizerType.ARRAY_QUEUE),
                     menuItem(VisualizerType.LINKED_QUEUE),
                     menuItem(VisualizerType.ARRAY_DEQUE),
@@ -754,8 +862,17 @@ const menuTree: MenuNode[] = [
                     menuItem(VisualizerType.BST),
                     menuItem(VisualizerType.AVL),
                     menuItem(VisualizerType.RED_BLACK),
+                    menuItem(VisualizerType.TREAP),
+                    menuItem(VisualizerType.SCAPEGOAT),
                     menuItem(VisualizerType.SEGMENT_TREE),
                     menuItem(VisualizerType.TRIE),
+                ],
+            },
+            {
+                label: '其他',
+                children: [
+                    menuItem(VisualizerType.UNION_FIND),
+                    menuItem(VisualizerType.BINARY_INDEXED_TREE),
                 ],
             },
         ],
@@ -821,6 +938,12 @@ const createDS = (key: VisualizerType): void => {
         case VisualizerType.BINARY_TREE_TRAVERSAL:
             traversalNodeCount = 7;
             break;
+        case VisualizerType.UNION_FIND:
+            unionFindSize = UNION_FIND_DEFAULT_SIZE;
+            break;
+        case VisualizerType.BINARY_INDEXED_TREE:
+            bitSize = BIT_DEFAULT_SIZE;
+            break;
         case VisualizerType.DIJKSTRA:
         case VisualizerType.FLOYD:
         case VisualizerType.PRIM:
@@ -865,6 +988,12 @@ const updateStats = (): void => {
         case VisualizerType.SEGMENT_TREE:
             stats.value.size = segDataLen;
             break;
+        case VisualizerType.UNION_FIND:
+            stats.value.size = unionFindSize;
+            break;
+        case VisualizerType.BINARY_INDEXED_TREE:
+            stats.value.size = bitSize;
+            break;
         case VisualizerType.DIJKSTRA:
         case VisualizerType.FLOYD:
         case VisualizerType.PRIM:
@@ -890,7 +1019,7 @@ const updateStats = (): void => {
 const selectMenu = async (key: VisualizerType): Promise<void> => {
     await forceFinishPending();
     currentMenu.value = key;
-    currentOp.value = OP.RESTART;
+    currentOp.value = '';
     currentResult.value = null;
     clearMessages();
     DataNode.restart();
@@ -905,7 +1034,9 @@ const selectMenu = async (key: VisualizerType): Promise<void> => {
 const isTreeDS = computed(() =>
     currentMenu.value === VisualizerType.BST ||
     currentMenu.value === VisualizerType.AVL ||
-    currentMenu.value === VisualizerType.RED_BLACK);
+    currentMenu.value === VisualizerType.RED_BLACK ||
+    currentMenu.value === VisualizerType.TREAP ||
+    currentMenu.value === VisualizerType.SCAPEGOAT);
 const isLinkedListDS = computed(() =>
     currentMenu.value === VisualizerType.SINGLY_LINKED_LIST ||
     currentMenu.value === VisualizerType.CIRCULAR_LINKED_LIST ||
@@ -924,7 +1055,7 @@ const handleInsert = (v: Record<string, string>): void => {
             const no = treeInsertCounter++;
             addMessage(`将节点 ${insertVal}（第${no}个）加入${menuTitle(currentMenu.value)}`, MessageType.INFO);
             try {
-                await (ds as BinarySearchTree | AVLTree | RedBlackTree).insert(insertVal);
+                await (ds as BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree).insert(insertVal);
             } catch (error) {
                 addOperationError('插入操作', error);
             }
@@ -940,6 +1071,7 @@ const handleInsert = (v: Record<string, string>): void => {
             // 索引留空时等价于尾插（插入到下标size处）
             const idx = parseIndex(v.idx, list.size());
             addMessage(`在索引 ${idx} 处插入节点 ${insertVal}`, MessageType.INFO);
+            setListInsertHint(idx);
             try {
                 await list.insert(idx, insertVal);
             } catch (error) {
@@ -975,7 +1107,7 @@ const handleDelete = (v: Record<string, string>): void => {
             currentOp.value = OP.DELETE;
             addMessage(`从${menuTitle(currentMenu.value)}中删除节点 ${delVal}`, MessageType.INFO);
             try {
-                await (ds as BinarySearchTree | AVLTree | RedBlackTree).delete(delVal);
+                await (ds as BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree).delete(delVal);
             } catch (error) {
                 addOperationError('删除操作', error);
             }
@@ -1032,7 +1164,7 @@ const handleGet = (v: Record<string, string>): void => {
             currentOp.value = OP.SEARCH;
             addMessage(`在${menuTitle(currentMenu.value)}中查找节点 ${getVal}`, MessageType.INFO);
             try {
-                const ok = await (ds as BinarySearchTree | AVLTree | RedBlackTree).contains(getVal);
+                const ok = await (ds as BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree).contains(getVal);
                 currentResult.value = String(ok);
             } catch (error) {
                 addOperationError('查找操作', error);
@@ -1120,6 +1252,7 @@ const handleStackPush = (v: Record<string, string>): void => {
     runOp(async () => {
         currentOp.value = OP.STACK_PUSH;
         addMessage(`入栈：${val}`, MessageType.INFO);
+        setListInsertHint(0);
         try {
             await (ds as ArrayStack | LinkedStack).push(val);
         } catch (error) {
@@ -1167,6 +1300,7 @@ const handleQueuePush = (v: Record<string, string>): void => {
     runOp(async () => {
         currentOp.value = OP.QUEUE_PUSH;
         addMessage(`入队：${val}`, MessageType.INFO);
+        setListInsertHint((ds as ArrayQueue | LinkedQueue).size());
         try {
             await (ds as ArrayQueue | LinkedQueue).push(val);
         } catch (error) {
@@ -1214,6 +1348,7 @@ const handleDequePushFirst = (v: Record<string, string>): void => {
     runOp(async () => {
         currentOp.value = OP.DEQUE_FIRST;
         addMessage(`头部入队：${val}`, MessageType.INFO);
+        setListInsertHint(0);
         try {
             await (ds as ArrayDeque | LinkedDeque).pushFirst(val);
         } catch (error) {
@@ -1230,6 +1365,7 @@ const handleDequePushLast = (v: Record<string, string>): void => {
     runOp(async () => {
         currentOp.value = OP.DEQUE_LAST;
         addMessage(`尾部入队：${val}`, MessageType.INFO);
+        setListInsertHint((ds as ArrayDeque | LinkedDeque).size());
         try {
             await (ds as ArrayDeque | LinkedDeque).pushLast(val);
         } catch (error) {
@@ -1365,6 +1501,163 @@ const handleSegSetData = (v: Record<string, string>): void => {
         currentDS = create(SegmentTree, data);
         updateStats();
         addMessage(`已用 [${data.join(', ')}] 重建线段树`, MessageType.SUCCESS);
+    });
+};
+
+// ---------- 并查集 ----------
+const handleUnionFindUnion = (values: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const u = Number(values.u ?? 0);
+    const v = Number(values.v ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.UNION_FIND_UNION;
+        addMessage(`合并节点 ${u} 与节点 ${v} 所在的集合`, MessageType.INFO);
+        try {
+            await (ds as UnionFindSet).union(u, v);
+        } catch (error) {
+            addOperationError('合并集合', error);
+        }
+        updateStats();
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleUnionFindFind = (values: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const x = Number(values.x ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.UNION_FIND_FIND;
+        addMessage(`查找节点 ${x} 所在集合的根节点`, MessageType.INFO);
+        try {
+            const root = await (ds as UnionFindSet).find(x);
+            currentResult.value = root === null ? 'null' : String(root);
+        } catch (error) {
+            addOperationError('查找根节点', error);
+        }
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleUnionFindSize = (values: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const x = Number(values.x ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.UNION_FIND_SIZE;
+        addMessage(`查询节点 ${x} 所在集合的大小`, MessageType.INFO);
+        try {
+            const size = await (ds as UnionFindSet).getSize(x);
+            currentResult.value = String(size);
+        } catch (error) {
+            addOperationError('查询集合大小', error);
+        }
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleUnionFindSame = (values: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const u = Number(values.u ?? 0);
+    const v = Number(values.v ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.UNION_FIND_SAME;
+        addMessage(`判断节点 ${u} 与节点 ${v} 是否属于同一集合`, MessageType.INFO);
+        try {
+            const same = await (ds as UnionFindSet).inSameSet(u, v);
+            currentResult.value = String(same);
+        } catch (error) {
+            addOperationError('判断是否同集合', error);
+        }
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleUnionFindReset = (): void => {
+    runOp(async () => {
+        currentOp.value = OP.RESTART;
+        unionFindSize = UNION_FIND_DEFAULT_SIZE;
+        DataNode.restart();
+        visualizerManager.switchVisualizer(VisualizerType.UNION_FIND);
+        currentDS = create(UnionFindSet, unionFindSize);
+        updateStats();
+        addMessage('已重新开始', MessageType.SUCCESS);
+    });
+};
+
+const handleUnionFindSetSize = (values: Record<string, string>): void => {
+    const n = Number(values.n);
+    runOp(async () => {
+        currentOp.value = '设置规模';
+        unionFindSize = n;
+        DataNode.restart();
+        visualizerManager.switchVisualizer(VisualizerType.UNION_FIND);
+        currentDS = create(UnionFindSet, unionFindSize);
+        updateStats();
+        addMessage(`已初始化 ${n} 个独立元素`, MessageType.SUCCESS);
+    });
+};
+
+// ---------- 树状数组 ----------
+const handleBitAdd = (values: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const idx = Number(values.idx ?? 0);
+    const val = Number(values.val ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.BIT_ADD;
+        addMessage(`将 arr[${idx}] 增加 ${val}`, MessageType.INFO);
+        try {
+            await (ds as BinaryIndexedTree).add(idx, val);
+        } catch (error) {
+            addOperationError('单点加', error);
+        }
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleBitQuery = (values: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const l = Number(values.l ?? 0);
+    const r = Number(values.r ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.BIT_QUERY;
+        addMessage(`查询区间 [${l}, ${r}] 的元素和`, MessageType.INFO);
+        try {
+            const sum = await (ds as BinaryIndexedTree).query(l, r);
+            currentResult.value = sum === null ? 'null' : String(sum);
+        } catch (error) {
+            addOperationError('区间求和', error);
+        }
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleBitReset = (): void => {
+    runOp(async () => {
+        currentOp.value = OP.RESTART;
+        bitSize = BIT_DEFAULT_SIZE;
+        DataNode.restart();
+        visualizerManager.switchVisualizer(VisualizerType.BINARY_INDEXED_TREE);
+        currentDS = create(BinaryIndexedTree, bitSize);
+        updateStats();
+        addMessage('已重新开始', MessageType.SUCCESS);
+    });
+};
+
+const handleBitSetSize = (values: Record<string, string>): void => {
+    const n = Number(values.n);
+    runOp(async () => {
+        currentOp.value = '设置规模';
+        bitSize = n;
+        DataNode.restart();
+        visualizerManager.switchVisualizer(VisualizerType.BINARY_INDEXED_TREE);
+        currentDS = create(BinaryIndexedTree, bitSize);
+        updateStats();
+        addMessage(`已初始化长度为 ${n} 的树状数组`, MessageType.SUCCESS);
     });
 };
 
@@ -1519,10 +1812,10 @@ const handleSortSet = (v: Record<string, string>): void => {
     });
 };
 
-const handleSortRun = (v: Record<string, string>): void => {
-    const data = parseNumberList(v.sortInput ?? '');
-    if (data === null) {
-        addMessage('请输入有效数组（逗号分隔的数字）', MessageType.WARNING);
+const handleSortRun = (): void => {
+    const data = [...sortData.value];
+    if (data.length === 0) {
+        addMessage('请先设置数组', MessageType.WARNING);
         return;
     }
 
@@ -1571,24 +1864,6 @@ const syncKMP = (str: string, template: string): void => {
     currentDS = create(KMP, str, template);
     updateStats();
 };
-const handleKMPNext = (v: Record<string, string>): void => {
-    const str = (v.str ?? lastKmpStr).trim();
-    const template = (v.template ?? lastKmpTemplate).trim();
-    runOp(async () => {
-        syncKMP(str, template);
-        const ds = currentDS;
-        if (!ds) return;
-        currentOp.value = OP.KMP_NEXT;
-        addMessage('开始计算 next 数组', MessageType.INFO);
-        try {
-            await (ds as KMP).getNext();
-            addMessage('next 数组计算完毕', MessageType.SUCCESS);
-        } catch (error) {
-            addOperationError('next 数组计算', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
-};
 const handleKMPSearch = (v: Record<string, string>): void => {
     const str = (v.str ?? lastKmpStr).trim();
     const template = (v.template ?? lastKmpTemplate).trim();
@@ -1607,17 +1882,6 @@ const handleKMPSearch = (v: Record<string, string>): void => {
         stepController.setStatus(StepStatus.PAUSE_OR_FREE);
     });
 };
-const handleKMPReset = (): void => {
-    runOp(async () => {
-        currentOp.value = OP.RESTART;
-        DataNode.restart();
-        visualizerManager.switchVisualizer(VisualizerType.KMP);
-        currentDS = create(KMP, lastKmpStr, lastKmpTemplate);
-        updateStats();
-        addMessage('已重新开始', MessageType.SUCCESS);
-    });
-};
-
 // ---------- 二叉树遍�?----------
 const handlePreOrder = (): void => {
     const ds = currentDS;
@@ -1683,7 +1947,7 @@ const handleClear = (): void => {
         addMessage(`清空${menuTitle(key)}数据`, MessageType.INFO);
         try {
             await (ds as ArrayList | SinglyLinkedList | CircularLinkedList | DoubleLinkedList |
-                BinarySearchTree | AVLTree | RedBlackTree | Trie | ArrayStack | LinkedStack |
+                BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree | Trie | ArrayStack | LinkedStack |
                 ArrayQueue | LinkedQueue | ArrayDeque | LinkedDeque).clear();
         } catch (error) {
             addOperationError('清空操作', error);
@@ -1748,6 +2012,78 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
                     { label: '重新开始', icon: 'rotate', onClick: handleClear },
                 ],
             }];
+        case VisualizerType.UNION_FIND:
+            return [{
+                hint: '树中显示 father 指针方向，根节点显示集合大小；father 与 sz 数组同步更新',
+                inputs: [],
+                buttons: [
+                    {
+                        label: '合并集合',
+                        icon: 'plus',
+                        params: [unionFindUParam, unionFindVParam],
+                        validate: (v) => validateUnionFindIndex(v.u ?? '') ?? validateUnionFindIndex(v.v ?? ''),
+                        onClick: handleUnionFindUnion,
+                    },
+                    {
+                        label: '查找根节点',
+                        icon: 'search',
+                        params: [unionFindXParam],
+                        validate: (v) => validateUnionFindIndex(v.x ?? ''),
+                        onClick: handleUnionFindFind,
+                    },
+                    {
+                        label: '集合大小',
+                        icon: 'sum',
+                        params: [unionFindXParam],
+                        validate: (v) => validateUnionFindIndex(v.x ?? ''),
+                        onClick: handleUnionFindSize,
+                    },
+                    {
+                        label: '是否同集合',
+                        icon: 'eye',
+                        params: [unionFindUParam, unionFindVParam],
+                        validate: (v) => validateUnionFindIndex(v.u ?? '') ?? validateUnionFindIndex(v.v ?? ''),
+                        onClick: handleUnionFindSame,
+                    },
+                    {
+                        label: '设置规模',
+                        icon: 'settings',
+                        params: [unionFindSizeParam],
+                        validate: (v) => validateUnionFindSize(v.n ?? ''),
+                        onClick: handleUnionFindSetSize,
+                    },
+                    { label: '重新开始', icon: 'rotate', onClick: handleUnionFindReset },
+                ],
+            }];
+        case VisualizerType.BINARY_INDEXED_TREE:
+            return [{
+                hint: '下标从 1 开始，0 号位不使用；覆盖条表示 tree[i] 负责的区间，绿色为累加、红色为减去',
+                inputs: [],
+                buttons: [
+                    {
+                        label: '单点加',
+                        icon: 'plus',
+                        params: [bitIndexParam, bitValueParam],
+                        validate: (v) => validateBitIndex(v.idx ?? ''),
+                        onClick: handleBitAdd,
+                    },
+                    {
+                        label: '区间求和',
+                        icon: 'sum',
+                        params: [bitLeftParam, bitRightParam],
+                        validate: validateBitRange,
+                        onClick: handleBitQuery,
+                    },
+                    {
+                        label: '设置规模',
+                        icon: 'settings',
+                        params: [bitSizeParam],
+                        validate: (v) => validateBitSize(v.n ?? ''),
+                        onClick: handleBitSetSize,
+                    },
+                    { label: '重新开始', icon: 'rotate', onClick: handleBitReset },
+                ],
+            }];
         case VisualizerType.DIJKSTRA:
         case VisualizerType.FLOYD:
         case VisualizerType.PRIM:
@@ -1792,9 +2128,6 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
                     {
                         label: '开始排序',
                         icon: 'play',
-                        params: [sortParam],
-                        getInitial: () => ({ sortInput: sortData.value.join(',') }),
-                        validate: (v) => validateNumberList(v.sortInput ?? ''),
                         onClick: handleSortRun,
                     },
                     { label: '重新开始', icon: 'rotate', onClick: handleSortReset },
@@ -1809,18 +2142,11 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
                 defaults: { str: 'ababcabab', template: 'abab' },
                 buttons: [
                     {
-                        label: '计算next数组',
-                        icon: 'list',
-                        params: [kmpStrParam, kmpTemplateParam],
-                        onClick: handleKMPNext,
-                    },
-                    {
                         label: '开始匹配',
                         icon: 'search',
                         params: [kmpStrParam, kmpTemplateParam],
                         onClick: handleKMPSearch,
                     },
-                    { label: '重新开始', icon: 'rotate', onClick: handleKMPReset },
                 ],
             }];
         case VisualizerType.SEGMENT_TREE:
@@ -2024,6 +2350,11 @@ onMounted(async () => {
         visualizerManager.init(svgRef.value);
     }
 
+    // StepController 在放行下一步前等待可视化层动画队列空闲
+    stepController.setAnimationBarrier({
+        waitForIdle: () => visualizerManager.waitForAnimations(),
+    });
+
     canvasViewportRef.value?.addEventListener('wheel', handleCanvasWheel, { passive: false });
     window.addEventListener('resize', handleWindowResize);
     handleWindowResize();
@@ -2042,6 +2373,7 @@ onBeforeUnmount(() => {
     canvasViewportRef.value?.removeEventListener('wheel', handleCanvasWheel);
     window.removeEventListener('resize', handleWindowResize);
     visualizerManager.setBinarySearchPointerListener(null);
+    stepController.setAnimationBarrier(null);
 });
 </script>
 
@@ -2079,6 +2411,7 @@ onBeforeUnmount(() => {
                     :size="stats.size"
                     :current-op="currentOp"
                     :result="currentResult"
+                    :running="opRunning"
                 />
                 <StepControls
                     v-if="opRunning"

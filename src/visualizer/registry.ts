@@ -19,8 +19,12 @@ import { LinkedDeque } from '../datastructure/Queue/LinkedDeque';
 import { BinarySearchTree } from '../datastructure/Tree/BinarySearchTree/BinarySearchTree';
 import { AVLTree } from '../datastructure/Tree/BinarySearchTree/AVLTree';
 import { RedBlackTree } from '../datastructure/Tree/BinarySearchTree/RedBlackTree';
+import { TreapTree } from '../datastructure/Tree/BinarySearchTree/TreapTree';
+import { ScapegoatTree } from '../datastructure/Tree/BinarySearchTree/ScapegoatTree';
 import { SegmentTree } from '../datastructure/Tree/SegmentTree/SegmentTree';
 import { Trie } from '../datastructure/Tree/Trie/Trie';
+import { UnionFindSet } from '../datastructure/Other/UnionFindSet';
+import { BinaryIndexedTree } from '../datastructure/Other/BinaryIndexedTree';
 
 import { BinarySearch } from '../algorithm/List/BinarySearch';
 import { BinaryTreeTraversal } from '../algorithm/Tree/BinaryTreeTraversal';
@@ -37,6 +41,7 @@ import { KMP } from '../algorithm/List/KMP';
 import { ArrayVisualizer } from './ArrayVisualizer';
 import { LinkedListVisualizer } from './LinkedListVisualizer';
 import { TreeVisualizer } from './TreeVisualizer';
+import { UnionFindVisualizer } from './UnionFindVisualizer';
 import { BinarySearchVisualizer } from './BinarySearchVisualizer';
 import { GraphVisualizer } from './GraphVisualizer';
 import { SortVisualizer } from './SortVisualizer';
@@ -44,9 +49,10 @@ import { KMPVisualizer } from './KMPVisualizer';
 
 export type DSInstance =
     | ArrayList | SinglyLinkedList | CircularLinkedList | DoubleLinkedList
-    | BinarySearchTree | AVLTree | RedBlackTree
+    | BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree
     | BinarySearch | BinaryTreeTraversal | SegmentTree
     | ArrayQueue | LinkedQueue | ArrayDeque | LinkedDeque | ArrayStack | LinkedStack | Trie
+    | UnionFindSet | BinaryIndexedTree
     | dijkstra | floyd | prim | kruskal
     | BubbleSort | InsertionSort | MergeSort | QuickSort | KMP;
 
@@ -147,6 +153,16 @@ export const REGISTRY: Record<VisualizerTypeValue, RegistryEntry> = {
         visualizer: TreeVisualizer,
         create: () => create(RedBlackTree),
     },
+    [VisualizerType.TREAP]: {
+        title: 'Treap',
+        visualizer: TreeVisualizer,
+        create: () => create(TreapTree),
+    },
+    [VisualizerType.SCAPEGOAT]: {
+        title: '替罪羊树',
+        visualizer: TreeVisualizer,
+        create: () => create(ScapegoatTree),
+    },
     [VisualizerType.SEGMENT_TREE]: {
         title: '线段树',
         visualizer: TreeVisualizer,
@@ -156,6 +172,16 @@ export const REGISTRY: Record<VisualizerTypeValue, RegistryEntry> = {
         title: 'Trie树',
         visualizer: TreeVisualizer,
         create: () => create(Trie),
+    },
+    [VisualizerType.UNION_FIND]: {
+        title: '并查集',
+        visualizer: UnionFindVisualizer,
+        create: () => create(UnionFindSet, 10),
+    },
+    [VisualizerType.BINARY_INDEXED_TREE]: {
+        title: '树状数组',
+        visualizer: ArrayVisualizer,
+        create: () => create(BinaryIndexedTree, 8),
     },
     [VisualizerType.BINARY_SEARCH]: {
         title: '二分查找',

@@ -53,64 +53,64 @@ export class BinaryTreeTraversal {
      * 前序遍历实现
      * @param node 待遍历子树
      */
-    private async preOrderTraversalImpl(node: BinaryTreeTraversalNode | null): Promise<void> {
-        if (node === null) {
-            return;
-        }
-
+    private async preOrderTraversalImpl(node: BinaryTreeTraversalNode): Promise<void> {
         await stepController.wait();
         messageController.message("访问当前节点" + node.val, MessageType.INFO);
         node._set_visited(true);
         this.answer._add_value(node.val);
         
-        await stepController.wait();
-        messageController.message("递归遍历左子树" + node.val, MessageType.INFO);
-        await this.preOrderTraversalImpl(node.left);
+        if (node.left != null) {
+            await stepController.wait();
+            messageController.message("递归遍历左子树", MessageType.INFO);
+            await this.preOrderTraversalImpl(node.left);
+        }
 
-        await stepController.wait();
-        messageController.message("递归遍历右子树" + node.val, MessageType.INFO);
-        await this.preOrderTraversalImpl(node.right);
+        if (node.right != null) {
+            await stepController.wait();
+            messageController.message("递归遍历右子树", MessageType.INFO);
+            await this.preOrderTraversalImpl(node.right);
+        }
     }
 
     /**
      * 中序遍历实现
      * @param node 待遍历子树
      */
-    private async inOrderTraversalImpl(node: BinaryTreeTraversalNode | null): Promise<void> {
-        if (node === null) {
-            return;
+    private async inOrderTraversalImpl(node: BinaryTreeTraversalNode): Promise<void> {
+        if (node.left !== null) {
+            await stepController.wait();
+            messageController.message("递归遍历左子树", MessageType.INFO);
+            await this.inOrderTraversalImpl(node.left);
         }
 
-        await stepController.wait();
-        messageController.message("递归遍历左子树" + node.val, MessageType.INFO);
-        await this.inOrderTraversalImpl(node.left);
-        
         await stepController.wait();
         messageController.message("访问当前节点" + node.val, MessageType.INFO);
         node._set_visited(true);
         this.answer._add_value(node.val);
 
-        await stepController.wait();
-        messageController.message("递归遍历右子树" + node.val, MessageType.INFO);
-        await this.inOrderTraversalImpl(node.right);
+        if (node.right !== null) {
+            await stepController.wait();
+            messageController.message("递归遍历右子树", MessageType.INFO);
+            await this.inOrderTraversalImpl(node.right);
+        }
     }
 
     /**
      * 后序遍历实现
      * @param node 待遍历子树
      */
-    private async postOrderTraversalImpl(node: BinaryTreeTraversalNode | null): Promise<void> {
-        if (node === null) {
-            return;
+    private async postOrderTraversalImpl(node: BinaryTreeTraversalNode): Promise<void> {
+        if (node.left !== null) {
+            await stepController.wait();
+            messageController.message("递归遍历左子树", MessageType.INFO);
+            await this.postOrderTraversalImpl(node.left);
         }
-        
-        await stepController.wait();
-        messageController.message("递归遍历左子树" + node.val, MessageType.INFO);
-        await this.postOrderTraversalImpl(node.left);
 
-        await stepController.wait();
-        messageController.message("递归遍历右子树" + node.val, MessageType.INFO);
-        await this.postOrderTraversalImpl(node.right);
+        if (node.right !== null) {
+            await stepController.wait();
+            messageController.message("递归遍历右子树", MessageType.INFO);
+            await this.postOrderTraversalImpl(node.right);
+        }
 
         await stepController.wait();
         messageController.message("访问当前节点" + node.val, MessageType.INFO);

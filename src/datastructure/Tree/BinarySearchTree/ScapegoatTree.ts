@@ -13,6 +13,30 @@ const ScapegoatTree_Alpha: number = 0.7;
  * 替罪羊树
  */
 export class ScapegoatTree {
+
+    // 当前被标记为 visited 的节点队列
+    private visitedNodes: ScapegoatTreeNode[] = [];
+
+    /**
+     * 清除队列中所有节点的 visited 标记。
+     */
+    private clearVisited(): void {
+        for (const node of this.visitedNodes) {
+            node._set_visited(false);
+        }
+        this.visitedNodes.length = 0;
+    }
+
+    /**
+     * 标记当前访问节点，并清除之前的 visited 标记。
+     * @param node 当前访问节点
+     */
+    private setVisited(node: ScapegoatTreeNode): void {
+        this.clearVisited();
+        node._set_visited(true);
+        this.visitedNodes.push(node);
+    }
+
     /**
      * 设置根节点
      * @param root 要设置的根节点
@@ -25,6 +49,7 @@ export class ScapegoatTree {
      * 动画效果：清空替罪羊树
      */
     public _clear(): void {
+        this.clearVisited();
         this._set_root(null);
     }
 
@@ -132,12 +157,34 @@ export class ScapegoatTree {
     }
 
     /**
+     * 通知可视化层：进入子树重构阶段，显示中序序列并暂时收起原子树。
+     * 方法本身不改变数据结构，只借用原子操作钩子驱动动画。
+     * @param values 中序序列
+     * @param root 正在重构的子树根节点
+     */
+    public _show_rebuild_sequence(_values: number[], _root: ScapegoatTreeNode): void {
+    }
+
+    /**
+     * 通知可视化层：序列已经重建成独立子树，但还没有链接回父节点。
+     * @param _root 重建后的子树根节点
+     */
+    public _show_rebuilt_subtree(_root: ScapegoatTreeNode): void {
+    }
+
+    /**
+     * 通知可视化层：子树准备链接回原位置，恢复整棵树视图。
+     */
+    public _hide_rebuild_sequence(): void {
+    }
+
+    /**
      * 重构以node为根的子树
      * @param node 不平衡的子树根节点
      * @returns 重构后的子树根节点
      */
     private async rebuild(node: ScapegoatTreeNode): Promise<ScapegoatTreeNode> {
-        await stepController.wait();
+        this.setVisited(node);
         messageController.message(
             "节点[" + node.val + "]的子树不平衡，进行重构",
             MessageType.INFO
@@ -145,12 +192,19 @@ export class ScapegoatTree {
         const arr: ScapegoatTreeNode[] = [];
         this.inorder(node, arr);
 
+        messageController.message("收集中序序列", MessageType.INFO);
+        this._show_rebuild_sequence(arr.map(item => item.val!), node);
         await stepController.wait();
-        messageController.message(
-            "将收集到的" + arr.length + "个键二分重建为平衡子树",
-            MessageType.INFO
-        );
-        return this.build(arr, 0, arr.length - 1)!;
+
+        messageController.message("重建子树", MessageType.INFO);
+        const newRoot = this.build(arr, 0, arr.length - 1)!;
+        this._show_rebuilt_subtree(newRoot);
+        await stepController.wait();
+
+        messageController.message("链接子树", MessageType.INFO);
+        this._hide_rebuild_sequence();
+        await stepController.wait();
+        return newRoot;
     }
 
     /**
@@ -162,18 +216,22 @@ export class ScapegoatTree {
     private async insertNode(node: ScapegoatTreeNode | null, val: number):
         Promise<[ScapegoatTreeNode, boolean]> {
         if (node === null) {
-            await stepController.wait();
             messageController.message("创建新节点[" + val + "]", MessageType.INFO);
-            return [create(ScapegoatTreeNode, val, null, null, 1), true];
+            node = create(ScapegoatTreeNode, val, null, null, 1);
+            this.setVisited(node);
+            await stepController.wait();
+
+            this.clearVisited();
+            return [node, true];
         }
 
+        this.setVisited(node);
         if (val === node.val) {
             messageController.message("值'" + val + "'已存在", MessageType.WARNING);
             return [node, false];
         }
 
         const toLeft = val < node.val!;
-        await stepController.wait();
         if (toLeft) {
             messageController.message(
                 val + " < " + node.val + "，向左查找插入位置",
@@ -185,6 +243,7 @@ export class ScapegoatTree {
                 MessageType.INFO
             );
         }
+        await stepController.wait();
 
         const next = toLeft ? node.left : node.right;
         const [child, inserted] = await this.insertNode(next, val);
@@ -199,9 +258,10 @@ export class ScapegoatTree {
             }
         }
 
-        await stepController.wait();
-        messageController.message("更新节点[" + node.val + "]的size", MessageType.INFO);
+        this.setVisited(node);
+        messageController.message("更新节点" + node.val + "的size", MessageType.INFO);
         node._set_size(1 + this.sizeOf(node.left) + this.sizeOf(node.right));
+        await stepController.wait();
 
         if (this.isUnbalanced(node)) {
             return [await this.rebuild(node), true];
@@ -215,21 +275,26 @@ export class ScapegoatTree {
      */
     public async insert(val: number): Promise<void> {
         if (this.root === null) {
-            await stepController.wait();
-            messageController.message("创建根节点[" + val + "]", MessageType.INFO);
+            messageController.message("创建根节点" + val + "", MessageType.INFO);
             this._set_root(create(ScapegoatTreeNode, val, null, null, 1));
+            this.setVisited(this.root!);
+            await stepController.wait();
 
+            this.clearVisited();
             messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
             return;
         }
 
-        await stepController.wait();
         messageController.message("从根节点开始查找插入位置", MessageType.INFO);
+        await stepController.wait();
+
         const [newRoot, inserted] = await this.insertNode(this.root, val);
         if (!inserted) {
+            this.clearVisited();
             return;
         }
         this._set_root(newRoot);
+        this.clearVisited();
 
         messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
     }
@@ -242,7 +307,7 @@ export class ScapegoatTree {
      */
     private async deleteNode(node: ScapegoatTreeNode, val: number):
         Promise<[ScapegoatTreeNode | null, boolean]> {
-        await stepController.wait();
+        this.setVisited(node);
         if (val < node.val!) {
             if (node.left === null) {
                 return [node, false];
@@ -251,6 +316,8 @@ export class ScapegoatTree {
                 val + " < " + node.val + "，向左查找待删除节点",
                 MessageType.INFO
             );
+            await stepController.wait();
+
             const [child, deleted] = await this.deleteNode(node.left, val);
             if (!deleted) {
                 return [node, false];
@@ -266,6 +333,8 @@ export class ScapegoatTree {
                 val + " > " + node.val + "，向右查找待删除节点",
                 MessageType.INFO
             );
+            await stepController.wait();
+
             const [child, deleted] = await this.deleteNode(node.right, val);
             if (!deleted) {
                 return [node, false];
@@ -275,7 +344,7 @@ export class ScapegoatTree {
             }
         } else {
             if (node.left !== null && node.right !== null) {
-                await stepController.wait();
+                this.setVisited(node);
                 messageController.message(
                     "待删除节点有两个孩子，查找中序后继节点",
                     MessageType.INFO
@@ -284,13 +353,15 @@ export class ScapegoatTree {
                 while (succ.left !== null) {
                     succ = succ.left;
                 }
-
                 await stepController.wait();
+
+                this.setVisited(node);
                 messageController.message(
                     "将后继节点的值复制到待删除节点",
                     MessageType.INFO
                 );
                 node._set_value(succ.val);
+                await stepController.wait();
 
                 const [child] = await this.deleteNode(node.right, succ.val!);
                 if (child !== node.right) {
@@ -299,19 +370,22 @@ export class ScapegoatTree {
             } else {
                 const child = (node.left !== null) ? node.left : node.right;
 
-                await stepController.wait();
+                this.setVisited(node);
                 messageController.message(
-                    "删除节点，并将其孩子链接到父节点",
+                    "删除节点",
                     MessageType.INFO
                 );
                 node._delete();
+                await stepController.wait();
+
                 return [child, true];
             }
         }
 
-        await stepController.wait();
-        messageController.message("更新节点[" + node.val + "]的size", MessageType.INFO);
+        this.setVisited(node);
+        messageController.message("更新节点" + node.val + "的size", MessageType.INFO);
         node._set_size(1 + this.sizeOf(node.left) + this.sizeOf(node.right));
+        await stepController.wait();
 
         if (this.isUnbalanced(node)) {
             return [await this.rebuild(node), true];
@@ -325,18 +399,22 @@ export class ScapegoatTree {
      */
     public async delete(val: number): Promise<void> {
         if (this.root === null) {
+            this.clearVisited();
             messageController.message("值'" + val + "'不存在", MessageType.WARNING);
             return;
         }
 
-        await stepController.wait();
         messageController.message("从根节点开始查找待删除节点", MessageType.INFO);
+        await stepController.wait();
+
         const [newRoot, deleted] = await this.deleteNode(this.root, val);
         if (!deleted) {
+            this.clearVisited();
             messageController.message("值'" + val + "'不存在", MessageType.WARNING);
             return;
         }
         this._set_root(newRoot);
+        this.clearVisited();
 
         messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);
     }
@@ -349,16 +427,19 @@ export class ScapegoatTree {
     public async contains(val: number): Promise<boolean> {
         let x = this.root;
 
-        await stepController.wait();
         messageController.message("从根节点开始查找 " + val, MessageType.INFO);
+        await stepController.wait();
+
         while (x !== null) {
+            this.setVisited(x);
             if (x.val === val) {
-                await stepController.wait();
                 messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
+                await stepController.wait();
+
+                this.clearVisited();
                 return true;
             }
             const toLeft = val < x.val!;
-            await stepController.wait();
             if (toLeft) {
                 messageController.message(
                     val + " < " + x.val + "，向左查找",
@@ -372,8 +453,10 @@ export class ScapegoatTree {
                 );
                 x = x.right;
             }
+            await stepController.wait();
         }
 
+        this.clearVisited();
         messageController.message("值'" + val + "'不存在", MessageType.INFO);
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return false;
@@ -389,11 +472,11 @@ export class ScapegoatTree {
         let res = 0;
 
         while (x !== null) {
-            await stepController.wait();
+            this.setVisited(x);
             if (x.val! < val) {
                 const cnt = this.sizeOf(x.left) + 1;
                 messageController.message(
-                    x.val + " < " + val + "，加上左子树与当前节点的" + cnt + "个键，继续向右查找",
+                    "节点" + x.val + " < " + val + "，加上左子树与当前节点的" + cnt + "个键，继续向右查找",
                     MessageType.INFO
                 );
                 res += cnt;
@@ -407,14 +490,18 @@ export class ScapegoatTree {
             } else {
                 const cnt = this.sizeOf(x.left);
                 messageController.message(
-                    x.val + " = " + val + "，加上左子树的" + cnt + "个键，统计结束",
+                   "节点" + x.val + " = " + val + "，加上左子树的" + cnt + "个键，统计结束",
                     MessageType.INFO
                 );
                 res += cnt;
+                await stepController.wait();
+
                 break;
             }
+            await stepController.wait();
         }
 
+        this.clearVisited();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return res;
     }
@@ -425,8 +512,9 @@ export class ScapegoatTree {
      * @returns val的排名（不存在时返回null）
      */
     public async rank(val: number): Promise<number | null> {
-        await stepController.wait();
         messageController.message("查询键'" + val + "'的排名", MessageType.INFO);
+        await stepController.wait();
+
         const res = await this.small(val);
         if (this.findNode(val) === null) {
             messageController.message("值'" + val + "'不存在", MessageType.INFO);
@@ -446,33 +534,37 @@ export class ScapegoatTree {
             return null;
         }
 
-        let node: ScapegoatTreeNode | null = this.root;
-        while (node !== null) {
-            await stepController.wait();
-            if (this.sizeOf(node.left) >= k) {
+        let x: ScapegoatTreeNode | null = this.root;
+        while (x !== null) {
+            this.setVisited(x);
+            if (this.sizeOf(x.left) >= k) {
                 messageController.message(
                     "第" + k + "小的键在左子树，向左查找",
                     MessageType.INFO
                 );
-                node = node.left;
-            } else if (this.sizeOf(node.left) + 1 < k) {
-                k -= this.sizeOf(node.left) + 1;
+                x = x.left;
+            } else if (this.sizeOf(x.left) + 1 < k) {
+                k -= this.sizeOf(x.left) + 1;
                 messageController.message(
                     "第" + k + "小的键在右子树，向右查找",
                     MessageType.INFO
                 );
-                node = node.right;
+                x = x.right;
             } else {
                 messageController.message(
-                    "第" + k + "小的键为" + node.val,
+                    "第" + k + "小的键为" + x.val,
                     MessageType.INFO
                 );
+                await stepController.wait();
+
                 break;
             }
+            await stepController.wait();
         }
 
+        this.clearVisited();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
-        return node === null ? null : node.val;
+        return x === null ? null : x.val;
     }
 
     /**
@@ -481,27 +573,29 @@ export class ScapegoatTree {
      * @returns 小于val的最大值（不存在时返回null）
      */
     public async predecessor(val: number): Promise<number | null> {
-        let node = this.root;
+        let x = this.root;
         let res: number | null = null;
 
-        while (node !== null) {
-            await stepController.wait();
-            if (node.val! >= val) {
+        while (x !== null) {
+            this.setVisited(x);
+            if (x.val! >= val) {
                 messageController.message(
-                    "节点" + node.val + " ≥ " + val + "，向左查找",
+                    "节点" + x.val + " ≥ " + val + "，向左查找",
                     MessageType.INFO
                 );
-                node = node.left;
+                x = x.left;
             } else {
                 messageController.message(
-                    "节点" + node.val + " < " + val + "，暂作答案，向右查找更大的键",
+                    "节点" + x.val + " < " + val + "，暂作答案，向右查找更大的键",
                     MessageType.INFO
                 );
-                res = node.val!;
-                node = node.right;
+                res = x.val!;
+                x = x.right;
             }
+            await stepController.wait();
         }
 
+        this.clearVisited();
         if (res === null) {
             messageController.message("值'" + val + "'没有前驱", MessageType.INFO);
         }
@@ -515,27 +609,29 @@ export class ScapegoatTree {
      * @returns 大于val的最小值（不存在时返回null）
      */
     public async successor(val: number): Promise<number | null> {
-        let node = this.root;
+        let x = this.root;
         let res: number | null = null;
 
-        while (node !== null) {
-            await stepController.wait();
-            if (node.val! <= val) {
+        while (x !== null) {
+            this.setVisited(x);
+            if (x.val! <= val) {
                 messageController.message(
-                    node.val + " ≤ " + val + "，向右查找",
+                    x.val + " ≤ " + val + "，向右查找",
                     MessageType.INFO
                 );
-                node = node.right;
+                x = x.right;
             } else {
                 messageController.message(
-                    node.val + " > " + val + "，暂作答案，继续向左查找更小的值",
+                    x.val + " > " + val + "，暂作答案，继续向左查找更小的值",
                     MessageType.INFO
                 );
-                res = node.val!;
-                node = node.left;
+                res = x.val!;
+                x = x.left;
             }
+            await stepController.wait();
         }
 
+        this.clearVisited();
         if (res === null) {
             messageController.message("值'" + val + "'没有后继", MessageType.INFO);
         }

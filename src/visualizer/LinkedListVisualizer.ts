@@ -46,6 +46,14 @@ export class LinkedListVisualizer extends BaseVisualizer {
     private ds: LinkedListDS | null = null;
     // 渲染模式：linear（带头节点链表/栈）/ sentinel（带哨兵节点的循环链表/队列/双端队列）/ hashtable（哈希表链式桶）
     private mode: 'linear' | 'sentinel' | 'hashtable' = 'linear';
+    // 刚创建、尚未链接进结构的节点。只有这些节点会作为“待插入节点”出现在布局里，
+    // 删除过程中被摘下来的旧节点不会再被当成新节点追加到末尾。
+    private pendingNodeIds: Set<number> = new Set();
+    // 下一次新节点出现的数据下标（0 表示头部，size 表示尾部）
+    private insertHint: number | null = null;
+    // 是否已经排入一次重绘（同一批原子操作只重绘一次）
+    private renderQueued: boolean = false;
+    private queuedRenderDuration: number = 0;
 
     private static readonly NODE_WIDTH = 60;
     private static readonly NODE_HEIGHT = 50;
@@ -66,20 +74,22 @@ export class LinkedListVisualizer extends BaseVisualizer {
         switch (method) {
             case '_create':
                 this.nodes.set(linked.getId(), linked);
-                this.render();
+                this.pendingNodeIds.add(linked.getId());
+                this.enqueueRender(260);
                 break;
             case '_set_value':
-                this.render();
+                this.enqueueRender(160);
                 break;
             case '_set_next':
-                this.render();
+                this.enqueueRender(260);
                 break;
             case '_set_last':
-                this.render();
+                this.enqueueRender(260);
                 break;
             case '_delete':
+                this.pendingNodeIds.delete(linked.getId());
                 this.nodes.delete(linked.getId());
-                this.render();
+                this.enqueueRender(200);
                 break;
             default:
                 break;
@@ -105,34 +115,36 @@ export class LinkedListVisualizer extends BaseVisualizer {
                 // 数据结构实例被 create() 创建时绑定
                 this.ds = node;
                 this.mode = this.detectMode(node);
-                this.render();
+                this.enqueueRender(260);
                 break;
             case '_set_head':
                 this.ds = node;
                 this.mode = 'linear';
-                this.render();
+                this.enqueueRender(260);
                 break;
             case '_set_header':
                 this.ds = node;
                 this.mode = 'sentinel';
-                this.render();
+                this.enqueueRender(260);
                 break;
             case '_set_tail':
                 this.ds = node;
-                this.render();
+                this.enqueueRender(260);
                 break;
             case '_set_array':
                 this.ds = node;
                 this.mode = 'hashtable';
-                this.render();
+                this.enqueueRender(260);
                 break;
             case '_set_bucket':
                 this.ds = node;
                 this.mode = 'hashtable';
-                this.render();
+                this.enqueueRender(260);
                 break;
             case '_clear':
-                this.render();
+                this.pendingNodeIds.clear();
+                this.insertHint = null;
+                this.enqueueRender(260);
                 break;
             default:
                 break;
@@ -211,13 +223,35 @@ export class LinkedListVisualizer extends BaseVisualizer {
                 curr = curr.next;
             }
 
-            // 刚创建、尚未链接进链表的节点也要显示，否则只能在插入完成后才看到
+            // 刚创建、尚未链接进链表的节点也要显示，否则只能在插入完成后才看到。
+            // 只处理“新建待插入”节点：删除过程中被摘下的旧节点不能再次追加到末尾。
             const used = new Set(ring.map(item => item.node.getId()));
-            this.nodes.forEach(node => {
-                if (!used.has(node.getId())) {
-                    ring.push({ node, isSentinel: false });
+            this.pendingNodeIds.forEach(id => {
+                if (used.has(id)) {
+                    this.pendingNodeIds.delete(id);
                 }
             });
+            const pending: LinkedNodeView[] = [];
+            this.nodes.forEach(node => {
+                if (!used.has(node.getId()) && this.pendingNodeIds.has(node.getId())) {
+                    pending.push(node);
+                }
+            });
+
+            if (pending.length > 0) {
+                // ring[0] 是 header，所以数据下标 index 对应 ring 下标 index + 1。
+                // 头插时 index=0，新节点会出现在 header 之后（环的上方），
+                // 尾插时 index=size，新节点会出现在 header 之前（环的末尾）。
+                let insertAt = this.insertHint === null
+                    ? ring.length
+                    : Math.max(1, Math.min(ring.length, this.insertHint + 1));
+                pending.forEach(node => {
+                    ring.splice(insertAt, 0, { node, isSentinel: false });
+                    ++insertAt;
+                });
+            } else {
+                this.insertHint = null;
+            }
 
             const total = ring.length;
             if (total <= 2) {
@@ -259,11 +293,32 @@ export class LinkedListVisualizer extends BaseVisualizer {
             c = c.next;
         }
         const used = new Set(chain.map(node => node.getId()));
-        this.nodes.forEach(node => {
-            if (!used.has(node.getId())) {
-                chain.push(node);
+        this.pendingNodeIds.forEach(id => {
+            if (used.has(id)) {
+                this.pendingNodeIds.delete(id);
             }
         });
+        const pending: LinkedNodeView[] = [];
+        this.nodes.forEach(node => {
+            if (!used.has(node.getId()) && this.pendingNodeIds.has(node.getId())) {
+                pending.push(node);
+            }
+        });
+
+        if (pending.length > 0) {
+            // 线性结构没有哨兵，数据下标就是 chain 下标。
+            // 头插/栈 push 时 hint=0，新节点从最左侧淡入；
+            // 尾插时 hint=size，新节点从最右侧淡入。
+            let insertAt = this.insertHint === null
+                ? chain.length
+                : Math.max(0, Math.min(chain.length, this.insertHint));
+            pending.forEach(node => {
+                chain.splice(insertAt, 0, node);
+                ++insertAt;
+            });
+        } else {
+            this.insertHint = null;
+        }
 
         // 统计节点总数，使整条链表水平居中（节点宽 + 节点间隙）
         const count = chain.length;
@@ -281,6 +336,25 @@ export class LinkedListVisualizer extends BaseVisualizer {
             });
         });
         return result;
+    }
+
+    /**
+     * 将整条链表的一次重绘加入动画队列。
+     * @param duration 本次重绘需要等待的动画时长
+     */
+    private enqueueRender(duration: number): void {
+        this.queuedRenderDuration = Math.max(this.queuedRenderDuration, duration);
+        if (this.renderQueued) {
+            return;
+        }
+        this.renderQueued = true;
+        this.animations.enqueue(async () => {
+            const wait = this.queuedRenderDuration;
+            this.queuedRenderDuration = 0;
+            this.renderQueued = false;
+            this.render();
+            await this.delay(wait);
+        });
     }
 
     /**
@@ -323,7 +397,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
 
         // 新节点淡入浮现；使用独立命名过渡，避免和位置移动过渡互相取消
         enterGroups.transition('node-enter')
-            .duration(300)
+            .duration(180)
             .style('opacity', 1);
 
         // 统一更新（enter与update都要更新class/id/值/哨兵虚线）
@@ -333,7 +407,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
             .attr('data-id', (d: LayoutItem) => d.node.getId())
             .attr('class', (d: LayoutItem) => d.isSentinel ? 'linked-node sentinel-node' : 'linked-node')
             .transition('move')
-            .duration(300)
+            .duration(180)
             .attr('transform', (d: LayoutItem) => `translate(${d.x}, ${d.y})`);
 
         merged.select('.node-box')
@@ -342,8 +416,12 @@ export class LinkedListVisualizer extends BaseVisualizer {
         merged.select('.node-value')
             .text((d: LayoutItem) => this.nodeText(d));
 
-        // 退出：直接移除（不做淡出，避免透明度残留导致节点透明）
-        nodeGroups.exit().remove();
+        // 退出：节点在最后一次布局的位置淡出，而不是先跳回末尾再消失
+        nodeGroups.exit()
+            .transition('node-exit')
+            .duration(180)
+            .style('opacity', 0)
+            .remove();
 
         // 3. 指针标签（top / header / tail）
         this.renderLabels(layout);
@@ -560,7 +638,24 @@ export class LinkedListVisualizer extends BaseVisualizer {
     }
 
     /**
-     * 高亮（闪烁）第index个数据节点（不含哨兵），供“查找/修改”动画使用
+     * 指定下一次插入操作中新节点的落点（数据下标）。
+     *
+     * 页面层在执行插入前调用：
+     * - 头插/栈 push 传 0；
+     * - 尾插/队尾入队/deque pushLast 传当前元素个数；
+     * - 按索引插入传目标下标。
+     *
+     * 可视化层据此把尚未链接的新节点直接画在它最终会出现的位置，
+     * 避免“先出现在末尾、链接时再整体跳到目标位置”的错乱感。
+     *
+     * @param index 新节点最终的数据下标（0 表示头部）
+     */
+    public setPendingInsertIndex(index: number): void {
+        this.insertHint = Math.max(0, Math.trunc(index));
+    }
+
+    /**
+     * 闪烁高亮第index个数据节点（用于链表查找、修改、删除提示）
      * @param index 数据节点下标（从0开始）
      */
     public highlightIndex(index: number): void {
@@ -628,6 +723,10 @@ export class LinkedListVisualizer extends BaseVisualizer {
     clear(): void {
         super.clear();
         this.nodes.clear();
+        this.pendingNodeIds.clear();
+        this.insertHint = null;
+        this.renderQueued = false;
+        this.queuedRenderDuration = 0;
         this.ds = null;
         this.mode = 'linear';
     }

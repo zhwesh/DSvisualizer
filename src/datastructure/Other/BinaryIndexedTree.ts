@@ -60,7 +60,7 @@ export class BinaryIndexedTree {
 
             await stepController.wait();
             messageController.message(
-                "将区间(" + (idx - lb) + "," + idx + "]增加" + val,
+                "将区间[" + (idx - lb + 1) + "," + idx + "]增加" + val,
                 MessageType.INFO
             );
             this.node._set_tree_color(idx, BinaryIndexedTree_TREE_GREEN);
@@ -68,6 +68,7 @@ export class BinaryIndexedTree {
             idx += lb;
         }
 
+        await stepController.wait();
         messageController.message(SuccessMessage.SET_SUCCESS, MessageType.SUCCESS);
         this.node._clear_color();
     }
@@ -90,7 +91,7 @@ export class BinaryIndexedTree {
             const lb = this.lowbit(r);
             await stepController.wait();
             messageController.message(
-                "将区间(" + (r - lb) + "," + r + "]的累加和添加到结果",
+                "将区间[" + (r - lb + 1) + "," + r + "]的累加和添加到结果",
                 MessageType.INFO
             );
             this.node._set_tree_color(r, BinaryIndexedTree_TREE_GREEN);
@@ -107,7 +108,7 @@ export class BinaryIndexedTree {
             const lb = this.lowbit(l);
             await stepController.wait();
             messageController.message(
-                "将区间(" + (l - lb) + "," + l + "]的累加和从结果减去",
+                "将区间[" + (l - lb + 1) + "," + l + "]的累加和从结果减去",
                 MessageType.INFO
             );
             this.node._set_tree_color(l, BinaryIndexedTree_TREE_RED);
@@ -118,6 +119,7 @@ export class BinaryIndexedTree {
             l -= lb;
         }
 
+        await stepController.wait();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         this.node._clear_color();
         return sum;
