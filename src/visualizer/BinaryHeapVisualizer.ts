@@ -5,10 +5,10 @@ import { BinaryHeapNode } from '../node/ArrayNode/impl/BinaryHeapNode';
 /************************************************** */
 // 配色
 const COLOR_BG = '#ffffff';
-const COLOR_TEXT = '#2c3e50';
-const COLOR_EDGE = '#9aa7b5';
+const COLOR_TEXT = '#333333';
+const COLOR_EDGE = '#999999';
 const COLOR_NODE_STROKE = '#666666';
-const COLOR_NODE_VALUE = '#2d3748';
+const COLOR_NODE_VALUE = '#333333';
 const COLOR_EMPTY = '#f8fafc';
 const COLOR_EMPTY_STROKE = '#cbd5e1';
 const COLOR_INDEX = '#98a2b3';
@@ -42,12 +42,15 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
     private views: Map<number, HeapView> = new Map();
     // 主堆节点 id
     private mainId: number | null = null;
+    // 扩容复制期间主堆的显示快照：算法用 _swap_value 把值搬到临时数组，
+    // 但主堆逻辑上仍是原堆，所以树和主数组在交换前保持原值，避免消失再出现。
+    private stableMainData: (number | null)[] | null = null;
 
     private static readonly TREE_CENTER_X = 600;
     private static readonly TREE_START_Y = 90;
-    private static readonly TREE_H_GAP = 64;
-    private static readonly TREE_V_GAP = 74;
-    private static readonly NODE_RADIUS = 18;
+    private static readonly TREE_H_GAP = 50;
+    private static readonly TREE_V_GAP = 60;
+    private static readonly NODE_RADIUS = 15;
     private static readonly CELL_W = 44;
     private static readonly CELL_H = 42;
     private static readonly ARRAY_GAP = 82;
@@ -87,6 +90,8 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
                 break;
             }
             case '_swap_array': {
+                // 临时数组已与主数组交换，主堆恢复使用真实数据
+                this.stableMainData = null;
                 this.enqueueRender([], 120);
                 break;
             }
@@ -113,6 +118,10 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
         const isMain = this.mainId === null;
         if (isMain) {
             this.mainId = node.getId();
+            this.stableMainData = null;
+        } else if (this.mainId !== null) {
+            const main = this.views.get(this.mainId);
+            this.stableMainData = main ? [...this.viewData(main)] : null;
         }
 
         const group = this.mainGroup.append('g')
@@ -130,6 +139,7 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
         // 主数组在 clear 时也会走 _delete，但堆实例后续仍继续复用这个节点；
         // 因此只清空渲染内容，不移除主视图。
         if (this.mainId === node.getId()) {
+            this.stableMainData = null;
             this.renderAll();
             return;
         }
@@ -150,6 +160,7 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
         this.views.forEach(view => view.group.remove());
         this.views.clear();
         this.mainId = null;
+        this.stableMainData = null;
         this.svg.attr('viewBox', '0 0 1200 600');
     }
 
@@ -171,13 +182,21 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
     /************************************************** */
     // 完全二叉树
     private renderTree(view: HeapView): void {
-        const { group, node } = view;
+        const { group } = view;
         let layer = group.select<SVGGElement>('g.heap-tree-layer');
         if (layer.empty()) {
             layer = group.append('g').attr('class', 'heap-tree-layer');
         }
 
-        const size = this.heapSize(node);
+        // 边单独放在节点下层，避免后新增的边覆盖已有节点圆圈
+        let edgeLayer = layer.select<SVGGElement>('g.heap-tree-edge-layer');
+        if (edgeLayer.empty()) {
+            edgeLayer = layer.append('g').attr('class', 'heap-tree-edge-layer');
+        }
+        edgeLayer.lower();
+
+        const data = this.viewData(view);
+        const size = this.heapSize(data);
         const indices = Array.from({ length: size }, (_, i) => i + 1);
         const positions = this.treePositions(size);
 
@@ -189,7 +208,7 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
                 return { i, from, to };
             });
 
-        const lines = layer.selectAll<SVGLineElement, { i: number; from: { x: number; y: number }; to: { x: number; y: number } }>('line.heap-edge')
+        const lines = edgeLayer.selectAll<SVGLineElement, { i: number; from: { x: number; y: number }; to: { x: number; y: number } }>('line.heap-edge')
             .data(edges, d => d.i);
 
         lines.enter()
@@ -198,6 +217,8 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
             .attr('stroke', COLOR_EDGE)
             .attr('stroke-width', 1.5)
             .merge(lines)
+            .transition('heap-edge-move')
+            .duration(this.duration(220))
             .attr('x1', d => d.from.x)
             .attr('y1', d => d.from.y)
             .attr('x2', d => d.to.x)
@@ -216,64 +237,73 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
                 const p = positions.get(d)!;
                 return `translate(${p.x}, ${p.y})`;
             })
-            .style('opacity', 0);
+            .style('opacity', 1);
 
         enter.append('circle')
             .attr('r', BinaryHeapVisualizer.NODE_RADIUS)
             .attr('fill', COLOR_BG)
             .attr('stroke', COLOR_NODE_STROKE)
-            .attr('stroke-width', 1.8);
+            .attr('stroke-width', 1.5);
 
         enter.append('text')
             .attr('class', 'heap-node-value')
             .attr('text-anchor', 'middle')
             .attr('dy', '0.35em')
-            .style('font-size', '15px')
+            .style('font-size', '14px')
             .style('font-weight', 'bold')
             .style('font-family', '"JetBrains Mono", SimHei, monospace')
             .style('fill', COLOR_NODE_VALUE);
 
-        enter.transition()
-            .duration(this.duration(180))
-            .style('opacity', 1);
-
         nodes.merge(enter)
+            .transition('heap-node-move')
+            .duration(this.duration(220))
             .attr('transform', d => {
                 const p = positions.get(d)!;
                 return `translate(${p.x}, ${p.y})`;
-            })
+            });
+
+        nodes.merge(enter)
             .select('.heap-node-value')
-            .text(d => String(node.data[d] ?? ''));
+            .text(d => String(data[d] ?? ''));
 
         nodes.exit().remove();
     }
 
     private treePositions(size: number): Map<number, { x: number; y: number }> {
+        // 与 TreeVisualizer 一致：按中序遍历顺序分配水平位置，深度决定纵坐标
+        const flat: { index: number; depth: number }[] = [];
+        const traverse = (index: number, depth: number): void => {
+            if (index > size) return;
+            traverse(index << 1, depth + 1);
+            flat.push({ index, depth });
+            traverse((index << 1) | 1, depth + 1);
+        };
+        traverse(1, 0);
+
         const positions = new Map<number, { x: number; y: number }>();
-        for (let i = 1; i <= size; ++i) {
-            const depth = Math.floor(Math.log2(i));
-            const levelStart = 1 << depth;
-            const levelCount = levelStart;
-            const offset = i - levelStart;
-            const x = BinaryHeapVisualizer.TREE_CENTER_X +
-                (offset - (levelCount - 1) / 2) * BinaryHeapVisualizer.TREE_H_GAP;
-            const y = BinaryHeapVisualizer.TREE_START_Y +
-                depth * BinaryHeapVisualizer.TREE_V_GAP;
-            positions.set(i, { x, y });
-        }
+        const firstX = BinaryHeapVisualizer.TREE_CENTER_X -
+            (flat.length - 1) * BinaryHeapVisualizer.TREE_H_GAP / 2;
+        flat.forEach((item, order) => {
+            positions.set(item.index, {
+                x: firstX + order * BinaryHeapVisualizer.TREE_H_GAP,
+                y: BinaryHeapVisualizer.TREE_START_Y +
+                    item.depth * BinaryHeapVisualizer.TREE_V_GAP,
+            });
+        });
         return positions;
     }
 
     /************************************************** */
     // 堆数组
     private renderArray(view: HeapView): void {
-        const { group, node, isMain } = view;
+        const { group, isMain } = view;
+        const data = this.viewData(view);
         let layer = group.select<SVGGElement>('g.heap-array-layer');
         if (layer.empty()) {
             layer = group.append('g').attr('class', 'heap-array-layer');
         }
 
-        const capacity = Math.max(0, node.data.length - 1);
+        const capacity = Math.max(0, data.length - 1);
         const y = this.arrayY(view);
         const startX = BinaryHeapVisualizer.TREE_CENTER_X -
             capacity * BinaryHeapVisualizer.CELL_W / 2;
@@ -293,20 +323,8 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
 
         if (capacity === 0) {
             layer.selectAll('g.heap-cell').remove();
-            if (isMain) {
-                let empty = layer.select<SVGTextElement>('text.heap-empty');
-                if (empty.empty()) {
-                    empty = layer.append('text').attr('class', 'heap-empty');
-                }
-                empty
-                    .attr('x', BinaryHeapVisualizer.TREE_CENTER_X)
-                    .attr('y', y + BinaryHeapVisualizer.CELL_H / 2 + 5)
-                    .attr('text-anchor', 'middle')
-                    .style('font-size', '14px')
-                    .style('font-family', '"JetBrains Mono", SimHei, monospace')
-                    .style('fill', '#98a2b3')
-                    .text('空堆');
-            }
+            layer.selectAll('text.heap-empty').remove();
+            label.remove();
             return;
         }
         layer.selectAll('text.heap-empty').remove();
@@ -349,7 +367,7 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
         merged.attr('transform', d => this.cellTransform(d, startX, y));
         merged.each(function (index) {
             const cell = d3.select(this);
-            const value = node.data[index];
+            const value = data[index];
             const empty = value === null || value === undefined;
             cell.select('rect')
                 .attr('fill', empty ? COLOR_EMPTY : COLOR_BG)
@@ -369,9 +387,15 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
 
     /************************************************** */
     // 布局/尺寸
-    private heapSize(node: BinaryHeapNode): number {
-        let size = Math.max(0, node.data.length - 1);
-        while (size > 0 && (node.data[size] === null || node.data[size] === undefined)) {
+    private viewData(view: HeapView): (number | null)[] {
+        return view.isMain && this.stableMainData !== null
+            ? this.stableMainData
+            : view.node.data;
+    }
+
+    private heapSize(data: (number | null)[]): number {
+        let size = Math.max(0, data.length - 1);
+        while (size > 0 && (data[size] === null || data[size] === undefined)) {
             --size;
         }
         return size;
@@ -383,7 +407,7 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
 
     private arrayY(view: HeapView): number {
         const main = this.mainView();
-        const size = main ? this.heapSize(main.node) : 0;
+        const size = main ? this.heapSize(this.viewData(main)) : 0;
         const depth = size > 0 ? Math.floor(Math.log2(size)) : 0;
         const base = BinaryHeapVisualizer.TREE_START_Y +
             depth * BinaryHeapVisualizer.TREE_V_GAP + 95;
@@ -396,16 +420,19 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
         let minY = Infinity, maxY = -Infinity;
 
         if (main) {
-            const size = this.heapSize(main.node);
-            const depth = size > 0 ? Math.floor(Math.log2(size)) : 0;
-            const treeHalfW = depth > 0 ? ((1 << depth) - 1) * BinaryHeapVisualizer.TREE_H_GAP / 2 : 0;
-            minX = Math.min(minX, BinaryHeapVisualizer.TREE_CENTER_X - treeHalfW - 40);
-            maxX = Math.max(maxX, BinaryHeapVisualizer.TREE_CENTER_X + treeHalfW + 40);
-            minY = Math.min(minY, BinaryHeapVisualizer.TREE_START_Y - 45);
+            const size = this.heapSize(this.viewData(main));
+            const treeHalfW = size > 1
+                ? (size - 1) * BinaryHeapVisualizer.TREE_H_GAP / 2
+                : 0;
+            minX = Math.min(minX, BinaryHeapVisualizer.TREE_CENTER_X - treeHalfW - 35);
+            maxX = Math.max(maxX, BinaryHeapVisualizer.TREE_CENTER_X + treeHalfW + 35);
+            minY = Math.min(minY, BinaryHeapVisualizer.TREE_START_Y -
+                BinaryHeapVisualizer.NODE_RADIUS - 30);
         }
 
         this.views.forEach(view => {
-            const capacity = Math.max(0, view.node.data.length - 1);
+            const data = this.viewData(view);
+            const capacity = Math.max(0, data.length - 1);
             const rowW = capacity * BinaryHeapVisualizer.CELL_W;
             const startX = BinaryHeapVisualizer.TREE_CENTER_X - rowW / 2;
             const y = this.arrayY(view);
@@ -441,7 +468,7 @@ export class BinaryHeapVisualizer extends BaseVisualizer {
 
                 const cell = view.group.select(`.heap-cell[data-i="${index}"] rect`);
                 if (!cell.empty()) {
-                    const value = view.node.data[index];
+                    const value = this.viewData(view)[index];
                     const empty = value === null || value === undefined;
                     cell
                         .interrupt()
