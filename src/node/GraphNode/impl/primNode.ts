@@ -5,7 +5,7 @@ export const prim_NONE: number = 0;         // 暂未选中
 export const prim_GREEN: number = 1;        // 已选中
 export const prim_BLUE: number = 2;         // 已加入优先队列
 
-export class primNode extends UndirectedGraphNode {
+export class PrimNode extends UndirectedGraphNode {
     /**
      * 设置边的颜色
      * @param u 边的端点

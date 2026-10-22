@@ -1,6 +1,6 @@
 import { MessageController, MessageType, SuccessMessage } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
-import { BinarySearchNode } from "../../node/ArrayNode/impl/BinarySearchNode";
+import { BinarySearch_GREEN, BinarySearch_NONE, BinarySearchNode } from "../../node/ArrayNode/impl/BinarySearchNode";
 import { create } from "../../node/factory"
 
 let messageController = MessageController.getMessageController();
@@ -28,32 +28,38 @@ export class BinarySearch {
      */
     public async find(target: number): Promise<number> {
         let l = 0, r = this.arr.data.length - 1, ans = -1, mid: number;
+        this.arr._set_left(l);
+        this.arr._set_right(r);
         while (l <= r) {
-            await stepController.wait();
             mid = (l + r) >> 1;
-            this.arr._set_left(l);
-            this.arr._set_right(r);
             this.arr._set_mid(mid);
             messageController.message(
-                "比较arr[mid]与target=",
+                "比较arr[mid]与target",
                 MessageType.INFO
             );
+            await stepController.wait();
             if (this.arr.data[mid]! <= target) {
                 messageController.message(
                     this.arr.data[mid] + " ≤ " + target + "，令l=mid+1",
                     MessageType.INFO
                 );
+                this.arr._set_color(ans, BinarySearch_NONE);
                 ans = mid;
+                this.arr._set_color(ans, BinarySearch_GREEN);
                 l = mid + 1;
+                this.arr._set_left(l);
             } else {
                 messageController.message(
                     this.arr.data[mid] + " > " + target + "，令r=mid-1",
                     MessageType.INFO
                 );
                 r = mid - 1;
+                this.arr._set_right(r);
             }
         }
 
+        await stepController.wait();
+        this.arr._set_color(ans, BinarySearch_NONE);
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return ans;
     }

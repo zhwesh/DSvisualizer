@@ -1,5 +1,5 @@
 import { floyd } from "../../../algorithm/Graph/Floyd";
-import { floydNode } from "../../../node/GraphNode/impl/FloydNode";
+import { FloydNode } from "../../../node/GraphNode/impl/FloydNode";
 import { MessageType } from "../../../controller/MessageController";
 import { assert, clearMessages, floydDistances, getMessages, initTest, randomDirectedGraph, randomInt, registerOpHook } from "../../TestUtils";
 
@@ -25,10 +25,10 @@ export async function testFloyd(): Promise<string> {
     assert(messages.length === 1 && messages[0].type === MessageType.WARNING, "空图应提示警告");
 
     // 随机有向图对拍
-    const graphs: floydNode[] = [];
+    const graphs: FloydNode[] = [];
     registerOpHook((target, method) => {
         if (graphs.length === 0 && method === "_set_dis") {
-            graphs.push(target as floydNode);
+            graphs.push(target as FloydNode);
         }
     });
     let caseCount = 0, totalNodes = 0, totalEdges = 0, maxNodes = 0;

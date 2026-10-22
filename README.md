@@ -37,7 +37,7 @@ npm run dev
 ```
 
 ## 使用项目
-下载 Release 包后，直接双击 `index.html` 即可使用，无需静态文件服务器。
+下载 Release 包后，双击内部文件`index.html`即可使用。
 
 从源码构建：
 ```

@@ -15,7 +15,8 @@ import { BubbleSortNode } from '../node/ArrayNode/impl/BubbleSortNode';
 import { InsertionSortNode } from '../node/ArrayNode/impl/InsertionSortNode';
 import { MergeSortNode } from '../node/ArrayNode/impl/MergeSortNode';
 
-// ---------- 配色常量（与设计图风格一致） ----------
+/************************************************** */
+// 配色常量（与设计图风格一致）
 const COLOR_DEFAULT = '#ffffff';
 const COLOR_HIGHLIGHT = '#ffeaa7';   // 修改/新增闪黄色
 const COLOR_COMPARE = '#74b9ff';     // 比较/交换闪蓝色
@@ -682,7 +683,8 @@ export class ArrayVisualizer extends BaseVisualizer {
         }
     }
 
-    // ==================== 数据动作入口 ====================
+    /************************************************** */
+    // 数据动作入口
 
     /**
      * 处理 _add_value：在数组末尾追加一个值。

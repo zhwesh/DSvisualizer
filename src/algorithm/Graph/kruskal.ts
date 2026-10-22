@@ -1,6 +1,6 @@
 import {
     kruskal_BLUE, kruskal_GREEN,
-    kruskal_NONE, kruskalNode
+    kruskal_NONE, KruskalNode
 } from "../../node/GraphNode/impl/KruskalNode";
 import { MessageController, MessageType } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
@@ -13,11 +13,13 @@ let stepController = StepController.getStepController();
  * 最小生成树（kruskal算法）
  */
 export class kruskal {
-    private graph: kruskalNode;
+    private graph: KruskalNode;
     private father!: number[];
+    public edges: number[][];
 
     constructor(edges: number[][]) {
-        this.graph = create(kruskalNode, edges);
+        this.graph = create(KruskalNode, edges);
+        this.edges = edges;
     }
 
     // 初始化
@@ -49,13 +51,14 @@ export class kruskal {
             return;
         }
 
+        
         await stepController.wait();
-        messageController.message("将边集按w排序", MessageType.INFO);
-        this.graph._sort_edges();
+        messageController.message("从小到大遍历边集", MessageType.INFO);
+        this.edges.sort((a, b) => (a[2] - b[2]));
 
         await stepController.wait();
         let selectedCnt = 0;    // 已经选中的边数量
-        for (let [u, v] of this.graph.edges) {
+        for (let [u, v] of this.edges) {
             this.graph._set_edge_color(u, v, kruskal_BLUE);
             messageController.message(
                 "尝试将边(" + u + "," + v + ")加入答案",

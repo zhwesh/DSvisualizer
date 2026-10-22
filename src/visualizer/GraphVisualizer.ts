@@ -1,10 +1,10 @@
 import * as d3 from 'd3';
 import { BaseVisualizer } from './BaseVisualizer';
 import { UndirectedGraphNode } from '../node/GraphNode/UndirectedGraphNode';
-import { dijkstraNode } from '../node/GraphNode/impl/DijkstraNode';
-import { floydNode } from '../node/GraphNode/impl/FloydNode';
-import { kruskalNode } from '../node/GraphNode/impl/KruskalNode';
-import { primNode } from '../node/GraphNode/impl/PrimNode';
+import { DijkstraNode } from '../node/GraphNode/impl/DijkstraNode';
+import { FloydNode } from '../node/GraphNode/impl/FloydNode';
+import { KruskalNode } from '../node/GraphNode/impl/KruskalNode';
+import { PrimNode } from '../node/GraphNode/impl/PrimNode';
 
 // 图算法节点联合类型（全部继承 Directed/UndirectedGraphNode）
 // 各子类的染色字段不完全相同（floyd无edgeColor、kruskal/prim无nodeColor），按渲染视图声明为可选
@@ -12,9 +12,10 @@ interface GraphColorView {
     edgeColor?: Map<number, number>[];
     nodeColor?: number[];
 }
-type GraphNodeInstance = (dijkstraNode | floydNode | kruskalNode | primNode) & GraphColorView;
+type GraphNodeInstance = (DijkstraNode | FloydNode | KruskalNode | PrimNode) & GraphColorView;
 
-// ---------- 颜色常量（与各算法节点的颜色枚举对齐） ----------
+/************************************************** */
+// 颜色常量（与各算法节点的颜色枚举对齐）
 const COLOR_NONE = '#ffffff';    // 未处理
 const COLOR_GREEN = '#2ecc71';   // 当前处理/已选中
 const COLOR_BLUE = '#3498db';    // 候选/入队
@@ -81,7 +82,7 @@ export class GraphVisualizer extends BaseVisualizer {
      * 是否最短路树类算法（dijkstra 的边绿色编码为 2，与 prim/kruskal 不同）
      */
     private get isDijkstra(): boolean {
-        return this.ds instanceof dijkstraNode;
+        return this.ds instanceof DijkstraNode;
     }
 
     /**
@@ -106,11 +107,12 @@ export class GraphVisualizer extends BaseVisualizer {
     }
 
     private isGraphNode(node: object): node is GraphNodeInstance {
-        return node instanceof dijkstraNode || node instanceof floydNode ||
-            node instanceof kruskalNode || node instanceof primNode;
+        return node instanceof DijkstraNode || node instanceof FloydNode ||
+            node instanceof KruskalNode || node instanceof PrimNode;
     }
 
-    // ---------- 原子操作分发 ----------
+    /************************************************** */
+    // 原子操作分发
     onOp(node: object, method: string, args: unknown[]): void {
         if (method === '_create') {
             if (this.isGraphNode(node)) {
@@ -142,7 +144,6 @@ export class GraphVisualizer extends BaseVisualizer {
                 });
                 break;
             case '_clear':
-            case '_sort_edges':
                 this.enqueueRender();
                 break;
             default:
@@ -396,7 +397,7 @@ export class GraphVisualizer extends BaseVisualizer {
                 .style('fill', COLOR_TEXT)
                 .text(String(i));
             // dijkstra：节点下方显示最短距离
-            if (ds instanceof dijkstraNode) {
+            if (ds instanceof DijkstraNode) {
                 g.append('text')
                     .attr('class', 'node-dis')
                     .attr('text-anchor', 'middle')
@@ -414,7 +415,7 @@ export class GraphVisualizer extends BaseVisualizer {
      * 更新 dijkstra 距离标签
      */
     private updateDis(): void {
-        if (!(this.ds instanceof dijkstraNode)) return;
+        if (!(this.ds instanceof DijkstraNode)) return;
         for (let i = 0; i < this.ds.nodeCnt; ++i) {
             const g = this.mainGroup.select(`.graph-node[data-node="${i}"]`);
             if (g.empty()) continue;

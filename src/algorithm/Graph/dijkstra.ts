@@ -1,7 +1,7 @@
 import {
     dijkstra_node_BLUE, dijkstra_node_GREEN,
     dijkstra_edge_GREEN, dijkstra_edge_NONE,
-    dijkstraNode
+    DijkstraNode
 } from "../../node/GraphNode/impl/DijkstraNode";
 import { MessageController, MessageType } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
@@ -14,13 +14,13 @@ let stepController = StepController.getStepController();
  * dijkstra算法求最短路（树）
  */
 export class dijkstra {
-    private node: dijkstraNode;
+    private node: DijkstraNode;
     private father!: number[];          // 最短路树上的父节点
     private vis!: boolean[];            // 节点是否已出堆并处理过
     private heap!: [number, number][];  // 优先队列（懒删除，元素为[距离, 节点]）
 
     constructor(edges: number[][]) {
-        this.node = create(dijkstraNode, edges);
+        this.node = create(DijkstraNode, edges);
     }
 
     // 初始化

@@ -27,6 +27,8 @@ import { ArrayQueue } from './datastructure/Queue/ArrayQueue';
 import { LinkedQueue } from './datastructure/Queue/LinkedQueue';
 import { ArrayDeque } from './datastructure/Queue/ArrayDeque';
 import { LinkedDeque } from './datastructure/Queue/LinkedDeque';
+import { BinaryHeap } from './datastructure/Queue/PriorityQueue/BinaryHeap';
+import { HashTable } from './datastructure/HashTable/HashTable';
 import { BinarySearchTree } from './datastructure/Tree/BinarySearchTree/BinarySearchTree';
 import { AVLTree } from './datastructure/Tree/BinarySearchTree/AVLTree';
 import { RedBlackTree } from './datastructure/Tree/BinarySearchTree/RedBlackTree';
@@ -49,7 +51,8 @@ import { MergeSort } from './algorithm/List/MergeSort';
 import { QuickSort } from './algorithm/List/QuickSort';
 import { KMP } from './algorithm/List/KMP';
 
-// ---------- 操作名常量（消除魔法字符串） ----------
+/************************************************** */
+// 操作名常量（消除魔法字符串）
 const OP = {
     INSERT: '插入数据',
     DELETE: '删除数据',
@@ -61,6 +64,12 @@ const OP = {
     QUEUE_PUSH: '入队',
     QUEUE_POP: '出队',
     QUEUE_FRONT: '查看队首',
+    HEAP_PUSH: '插入数据',
+    HEAP_POP: '弹出堆顶',
+    HEAP_TOP: '查看堆顶',
+    HASH_ADD: '插入键',
+    HASH_FIND: '查找键',
+    HASH_REMOVE: '删除键',
     DEQUE_FIRST: '头部入队',
     DEQUE_LAST: '尾部入队',
     DEQUE_POP_FIRST: '头部出队',
@@ -90,12 +99,14 @@ const OP = {
     RESTART: '重新开始',
 } as const;
 
-// ---------- 单例 ----------
+/************************************************** */
+// 单例
 const stepController = StepController.getStepController();
 const messageController = MessageController.getMessageController();
 const visualizerManager = VisualizerManager.getInstance();
 
-// ---------- 页面状�?----------
+/************************************************** */
+// 页面状�?
 const currentMenu = ref<VisualizerType>(VisualizerType.ARRAY_LIST);
 const currentOp = ref<string>(OP.RESTART);
 const currentResult = ref<string | null>(null);
@@ -106,7 +117,8 @@ const svgRef = ref<SVGSVGElement | null>(null);
 const appRef = ref<HTMLElement | null>(null);
 const canvasViewportRef = ref<HTMLDivElement | null>(null);
 
-// ---------- 可拖拽面板尺寸 ----------
+/************************************************** */
+// 可拖拽面板尺寸
 const readStoredSize = (key: string, fallback: number): number => {
     try {
         const raw = window.localStorage.getItem(key);
@@ -233,7 +245,8 @@ const endResize = (event: PointerEvent): void => {
     document.body.style.cursor = '';
 };
 
-// ---------- 画布缩放/平移 ----------
+/************************************************** */
+// 画布缩放/平移
 const CANVAS_MIN_SCALE = 0.25;
 const CANVAS_MAX_SCALE = 6;
 
@@ -394,7 +407,8 @@ const createGraphDS = (key: VisualizerType): DSInstance => {
     return createGraphStructure(key, edges);
 };
 
-// ---------- 链表等按下标操作时的输入解析 ----------
+/************************************************** */
+// 链表等按下标操作时的输入解析
 /**
  * 解析索引输入框：为空或非法时取默认�?
  * （number 输入框经 v-model 后可能已是number，两种都要支持）
@@ -409,7 +423,8 @@ const parseIndex = (raw: string | number | undefined, fallback: number): number 
     return Number.isFinite(value) ? Math.trunc(value) : fallback;
 };
 
-// ---------- 操作参数与校验（对话框提交前执行） ----------
+/************************************************** */
+// 操作参数与校验（对话框提交前执行）
 const numberParam = (key: string, label: string, placeholder?: string): ControlInputDef =>
     ({ key, label, placeholder, type: 'number' });
 const textParam = (key: string, label: string, placeholder?: string): ControlInputDef =>
@@ -501,7 +516,8 @@ const validateBitSize = (raw: string): string | null => {
     return null;
 };
 
-// ---------- 随机输入辅助 ----------
+/************************************************** */
+// 随机输入辅助
 const randomInt = (min: number, max: number): number =>
     min + Math.floor(Math.random() * (max - min + 1));
 
@@ -730,7 +746,8 @@ const setListInsertHint = (idx: number): void => {
     if (vis instanceof LinkedListVisualizer) vis.setPendingInsertIndex(idx);
 };
 
-// ---------- 消息 ----------
+/************************************************** */
+// 消息
 const addMessage = (text: string, type: number): void => {
     messages.value.push({ text, type });
     if (messages.value.length > 200) messages.value.splice(0, messages.value.length - 200);
@@ -749,7 +766,8 @@ messageController.setMessageHandler((msg: string, type: number) => {
     addMessage(msg, type);
 });
 
-// ---------- 复合操作串行�?----------
+/************************************************** */
+// 复合操作串行�?
 let opChain: Promise<void> = Promise.resolve();
 // 已提交但尚未结束的复合操作数量（含正在执行与排队等待的）
 const opPending = ref(0);
@@ -802,7 +820,8 @@ const forceFinishPending = async (): Promise<void> => {
     }
 };
 
-// ---------- 流程控制 ----------
+/************************************************** */
+// 流程控制
 const handlePlay = (): void => {
     if (!opRunning.value) return;
     stepController.setTimeInterval(PLAY_TIME_INTERVAL);
@@ -824,7 +843,8 @@ const handleStep = (): void => {
     stepController.setStatus(StepStatus.STEP_EXECUTION);
 };
 
-// ---------- 菜单树（三栏布局：左侧树状菜单） ----------
+/************************************************** */
+// 菜单树（三栏布局：左侧树状菜单）
 const menuItem = (key: VisualizerType): MenuNode => ({ label: getStructureTitle(key), key });
 
 const menuTree: MenuNode[] = [
@@ -854,6 +874,7 @@ const menuTree: MenuNode[] = [
                     menuItem(VisualizerType.LINKED_QUEUE),
                     menuItem(VisualizerType.ARRAY_DEQUE),
                     menuItem(VisualizerType.LINKED_DEQUE),
+                    menuItem(VisualizerType.BINARY_HEAP),
                 ],
             },
             {
@@ -871,6 +892,7 @@ const menuTree: MenuNode[] = [
             {
                 label: '其他',
                 children: [
+                    menuItem(VisualizerType.HASH_TABLE),
                     menuItem(VisualizerType.UNION_FIND),
                     menuItem(VisualizerType.BINARY_INDEXED_TREE),
                 ],
@@ -917,7 +939,8 @@ const menuTree: MenuNode[] = [
 // 菜单标题（单一来源：可视化注册表）
 const menuTitle = (key: VisualizerType): string => getStructureTitle(key);
 
-// ---------- 数据创建（实例来自注册表，这里只维护页面级规模状态） ----------
+/************************************************** */
+// 数据创建（实例来自注册表，这里只维护页面级规模状态）
 const createDS = (key: VisualizerType): void => {
     treeInsertCounter = 1;
     currentDS = isGraphAlgorithm(key) ? createGraphDS(key) : createStructure(key);
@@ -969,7 +992,8 @@ const createDS = (key: VisualizerType): void => {
     }
 };
 
-// ---------- 统计信息（按菜单类型取数，不读取算法层私有字段） ----------
+/************************************************** */
+// 统计信息（按菜单类型取数，不读取算法层私有字段）
 const hasSize = (ds: DSInstance): ds is Extract<DSInstance, { size(): number }> => 'size' in ds;
 
 const updateStats = (): void => {
@@ -1015,7 +1039,8 @@ const updateStats = (): void => {
     }
 };
 
-// ---------- 菜单切换（原设计：强制播完再切换�?----------
+/************************************************** */
+// 菜单切换（原设计：强制播完再切换�?
 const selectMenu = async (key: VisualizerType): Promise<void> => {
     await forceFinishPending();
     currentMenu.value = key;
@@ -1030,7 +1055,8 @@ const selectMenu = async (key: VisualizerType): Promise<void> => {
     addMessage(`已切换到「${menuTitle(key)}」`, MessageType.INFO);
 };
 
-// ---------- 菜单类型判断 ----------
+/************************************************** */
+// 菜单类型判断
 const isTreeDS = computed(() =>
     currentMenu.value === VisualizerType.BST ||
     currentMenu.value === VisualizerType.AVL ||
@@ -1042,7 +1068,8 @@ const isLinkedListDS = computed(() =>
     currentMenu.value === VisualizerType.CIRCULAR_LINKED_LIST ||
     currentMenu.value === VisualizerType.DOUBLE_LINKED_LIST);
 
-// ---------- 数据操作（统一模板：runOp 串行�?+ 快进排队�?----------
+/************************************************** */
+// 数据操作（统一模板：runOp 串行�?+ 快进排队�?
 const handleInsert = (v: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
@@ -1244,7 +1271,8 @@ const handleSet = (v: Record<string, string>): void => {
     });
 };
 
-// ---------- �?/ 队列 / 双端队列 ----------
+/************************************************** */
+// �?/ 队列 / 双端队列
 const handleStackPush = (v: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
@@ -1337,6 +1365,106 @@ const handleQueueFront = (): void => {
         } catch (error) {
             addOperationError('查看队首', error);
         }
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleHeapPush = (v: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const val = Number(v.val ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.HEAP_PUSH;
+        addMessage(`插入堆元素 ${val}`, MessageType.INFO);
+        try {
+            await (ds as BinaryHeap).push(val);
+        } catch (error) {
+            addOperationError('插入堆元素', error);
+        }
+        updateStats();
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleHeapPop = (): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    runOp(async () => {
+        currentOp.value = OP.HEAP_POP;
+        addMessage('弹出堆顶', MessageType.INFO);
+        try {
+            await (ds as BinaryHeap).pop();
+        } catch (error) {
+            addOperationError('弹出堆顶', error);
+        }
+        updateStats();
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleHeapTop = (): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    runOp(async () => {
+        currentOp.value = OP.HEAP_TOP;
+        addMessage('查看堆顶', MessageType.INFO);
+        try {
+            const v = await (ds as BinaryHeap).top();
+            currentResult.value = v === null ? 'null' : String(v);
+        } catch (error) {
+            addOperationError('查看堆顶', error);
+        }
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleHashAdd = (v: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const key = Number(v.val ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.HASH_ADD;
+        addMessage(`插入键 ${key}`, MessageType.INFO);
+        try {
+            await (ds as HashTable).add(key);
+        } catch (error) {
+            addOperationError('插入键', error);
+        }
+        updateStats();
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleHashFind = (v: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const key = Number(v.val ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.HASH_FIND;
+        addMessage(`查找键 ${key}`, MessageType.INFO);
+        try {
+            const found = await (ds as HashTable).contains(key);
+            currentResult.value = String(found);
+        } catch (error) {
+            addOperationError('查找键', error);
+        }
+        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
+    });
+};
+
+const handleHashRemove = (v: Record<string, string>): void => {
+    const ds = currentDS;
+    if (!ds) return;
+    const key = Number(v.val ?? 0);
+    runOp(async () => {
+        currentOp.value = OP.HASH_REMOVE;
+        addMessage(`删除键 ${key}`, MessageType.INFO);
+        try {
+            await (ds as HashTable).remove(key);
+        } catch (error) {
+            addOperationError('删除键', error);
+        }
+        updateStats();
         stepController.setStatus(StepStatus.PAUSE_OR_FREE);
     });
 };
@@ -1436,7 +1564,8 @@ const handleDequeGetLast = (): void => {
     });
 };
 
-// ---------- 线段�?----------
+/************************************************** */
+// 线段�?
 const handleSegAdd = (v: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
@@ -1504,7 +1633,8 @@ const handleSegSetData = (v: Record<string, string>): void => {
     });
 };
 
-// ---------- 并查集 ----------
+/************************************************** */
+// 并查集
 const handleUnionFindUnion = (values: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
@@ -1600,7 +1730,8 @@ const handleUnionFindSetSize = (values: Record<string, string>): void => {
     });
 };
 
-// ---------- 树状数组 ----------
+/************************************************** */
+// 树状数组
 const handleBitAdd = (values: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
@@ -1661,7 +1792,8 @@ const handleBitSetSize = (values: Record<string, string>): void => {
     });
 };
 
-// ---------- Trie ----------
+/************************************************** */
+// Trie
 const handleTrieInsert = (v: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
@@ -1731,7 +1863,8 @@ const handleTrieDelete = (v: Record<string, string>): void => {
     });
 };
 
-// ---------- 图算�?----------
+/************************************************** */
+// 图算�?
 const handleGraphRun = (): void => {
     const ds = currentDS;
     if (!ds) return;
@@ -1788,7 +1921,8 @@ const handleGraphReset = (): void => {
     });
 };
 
-// ---------- 排序 ----------
+/************************************************** */
+// 排序
 const handleSortSet = (v: Record<string, string>): void => {
     const data = parseNumberList(v.sortInput ?? '');
     if (data === null) {
@@ -1854,7 +1988,8 @@ const handleSortReset = (): void => {
     });
 };
 
-// ---------- KMP ----------
+/************************************************** */
+// KMP
 const syncKMP = (str: string, template: string): void => {
     if (str === lastKmpStr && template === lastKmpTemplate) return;
     lastKmpStr = str;
@@ -1882,7 +2017,8 @@ const handleKMPSearch = (v: Record<string, string>): void => {
         stepController.setStatus(StepStatus.PAUSE_OR_FREE);
     });
 };
-// ---------- 二叉树遍�?----------
+/************************************************** */
+// 二叉树遍�?
 const handlePreOrder = (): void => {
     const ds = currentDS;
     if (!ds) return;
@@ -1926,7 +2062,8 @@ const handlePostOrder = (): void => {
     });
 };
 
-// ---------- 清空 / 重新开�?----------
+/************************************************** */
+// 清空 / 重新开�?
 const handleClear = (): void => {
     const key = currentMenu.value;
     // 二分查找 / 二叉树遍历：重建页面
@@ -1948,7 +2085,7 @@ const handleClear = (): void => {
         try {
             await (ds as ArrayList | SinglyLinkedList | CircularLinkedList | DoubleLinkedList |
                 BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree | Trie | ArrayStack | LinkedStack |
-                ArrayQueue | LinkedQueue | ArrayDeque | LinkedDeque).clear();
+                ArrayQueue | LinkedQueue | ArrayDeque | LinkedDeque | BinaryHeap | HashTable).clear();
         } catch (error) {
             addOperationError('清空操作', error);
         }
@@ -1957,7 +2094,8 @@ const handleClear = (): void => {
     });
 };
 
-// ---------- 二分查找：设置数据并重新开�?----------
+/************************************************** */
+// 二分查找：设置数据并重新开�?
 const handleSetData = (v: Record<string, string>): void => {
     const input = (v.data ?? '').trim();
     if (input === '') {
@@ -1982,7 +2120,8 @@ const handleSetData = (v: Record<string, string>): void => {
     });
 };
 
-// ---------- 操作台配置（数据驱动，消除重复样板） ----------
+/************************************************** */
+// 操作台配置（数据驱动，消除重复样板）
 const controlGroups = computed<ControlGroupDef[]>(() => {
     const key = currentMenu.value;
     switch (key) {
@@ -2010,6 +2149,17 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
                     { label: '中序遍历', icon: 'list', onClick: handleInOrder },
                     { label: '后序遍历', icon: 'list', onClick: handlePostOrder },
                     { label: '重新开始', icon: 'rotate', onClick: handleClear },
+                ],
+            }];
+        case VisualizerType.HASH_TABLE:
+            return [{
+                hint: '链地址法：数字键直接作为哈希值，桶下标 = (桶数量-1) & 哈希值',
+                inputs: [{ key: 'val', placeholder: '键（整数）' }],
+                buttons: [
+                    { label: '插入键', icon: 'plus', params: [valParam], onClick: handleHashAdd },
+                    { label: '查找键', icon: 'search', params: [valParam], onClick: handleHashFind },
+                    { label: '删除键', icon: 'minus', params: [valParam], onClick: handleHashRemove },
+                    { label: '清空哈希表', icon: 'trash', onClick: handleClear },
                 ],
             }];
         case VisualizerType.UNION_FIND:
@@ -2239,6 +2389,17 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
                     { label: '清空队列', icon: 'trash', onClick: handleClear },
                 ],
             }];
+        case VisualizerType.BINARY_HEAP:
+            return [{
+                hint: '小根堆：父节点不大于孩子；数组下标从 1 开始，0 号位不使用',
+                inputs: [{ key: 'val', placeholder: '数值' }],
+                buttons: [
+                    { label: '插入数据', icon: 'plus', params: [valParam], onClick: handleHeapPush },
+                    { label: '弹出堆顶', icon: 'minus', onClick: handleHeapPop },
+                    { label: '查看堆顶', icon: 'search', onClick: handleHeapTop },
+                    { label: '清空堆', icon: 'trash', onClick: handleClear },
+                ],
+            }];
         case VisualizerType.ARRAY_DEQUE:
         case VisualizerType.LINKED_DEQUE:
             return [{
@@ -2344,7 +2505,8 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
     }
 });
 
-// ---------- 生命周期 ----------
+/************************************************** */
+// 生命周期
 onMounted(async () => {
     if (svgRef.value) {
         visualizerManager.init(svgRef.value);

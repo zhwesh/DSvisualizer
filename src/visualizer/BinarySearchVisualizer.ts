@@ -4,6 +4,7 @@ import { BinarySearchNode } from '../node/ArrayNode/impl/BinarySearchNode';
 
 const COLOR_MID = '#ffeaa7';     // mid 高亮
 const COLOR_RANGE = '#dfe6e9';   // 搜索范围底色
+const COLOR_ANSWER = '#2ecc71';  // 当前候选答案（最后一个 ≤ target 的元素）
 
 /**
  * 二分查找可视化器
@@ -56,6 +57,7 @@ export class BinarySearchVisualizer extends BaseVisualizer {
             case '_set_left':
             case '_set_right':
             case '_set_mid':
+            case '_set_color':
                 this.enqueueRender();
                 break;
             default:
@@ -148,6 +150,7 @@ export class BinarySearchVisualizer extends BaseVisualizer {
         merged.select('.bs-cell-rect')
             .attr('width', cellW)
             .attr('fill', (_d: number | null, i: number) => {
+                if (node.color?.[i]) return COLOR_ANSWER;
                 const inRange = node.left !== null && node.right !== null && i >= node.left && i <= node.right;
                 if (node.mid !== null && i === node.mid) return COLOR_MID;
                 return inRange ? COLOR_RANGE : '#fff';

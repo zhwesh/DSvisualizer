@@ -1,5 +1,5 @@
 import { dijkstra } from "../../../algorithm/Graph/Dijkstra";
-import { dijkstraNode } from "../../../node/GraphNode/impl/DijkstraNode";
+import { DijkstraNode } from "../../../node/GraphNode/impl/DijkstraNode";
 import { MessageType } from "../../../controller/MessageController";
 import { assert, clearMessages, dijkstraDistances, getMessages, initTest, randomDirectedGraph, randomInt, registerOpHook } from "../../TestUtils";
 
@@ -35,10 +35,10 @@ export async function testDijkstra(): Promise<string> {
     assert(messages.length === 1 && messages[0].type === MessageType.ERROR, "起点不存在应提示错误");
 
     // 随机有向图对拍
-    const graphs: dijkstraNode[] = [];
+    const graphs: DijkstraNode[] = [];
     registerOpHook((target, method) => {
         if (graphs.length === 0 && method === "_set_dis") {
-            graphs.push(target as dijkstraNode);
+            graphs.push(target as DijkstraNode);
         }
     });
     let caseCount = 0, totalNodes = 0, totalEdges = 0, maxNodes = 0;

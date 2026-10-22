@@ -1,7 +1,7 @@
 import { MessageController, MessageType } from "../../controller/MessageController";
 import { StepController } from "../../controller/StepController";
 import { create } from "../../node/factory";
-import { prim_BLUE, prim_GREEN, prim_NONE, primNode } from "../../node/GraphNode/impl/PrimNode";
+import { prim_BLUE, prim_GREEN, prim_NONE, PrimNode } from "../../node/GraphNode/impl/PrimNode";
 
 let messageController = MessageController.getMessageController();
 let stepController = StepController.getStepController();
@@ -10,13 +10,13 @@ let stepController = StepController.getStepController();
  * 最小生成树（prim算法）
  */
 export class prim {
-    private graph: primNode;
+    private graph: PrimNode;
     private dist!: number[];    // 每个节点到生成树的最小边权
     private pre!: number[];     // 最小边在生成树内的端点
     private inTree!: boolean[]; // 节点是否已加入生成树
 
     constructor(edges: number[][]) {
-        this.graph = create(primNode, edges);
+        this.graph = create(PrimNode, edges);
     }
 
     // 初始化

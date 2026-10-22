@@ -16,6 +16,8 @@ import { ArrayQueue } from '../datastructure/Queue/ArrayQueue';
 import { LinkedQueue } from '../datastructure/Queue/LinkedQueue';
 import { ArrayDeque } from '../datastructure/Queue/ArrayDeque';
 import { LinkedDeque } from '../datastructure/Queue/LinkedDeque';
+import { BinaryHeap } from '../datastructure/Queue/PriorityQueue/BinaryHeap';
+import { HashTable } from '../datastructure/HashTable/HashTable';
 import { BinarySearchTree } from '../datastructure/Tree/BinarySearchTree/BinarySearchTree';
 import { AVLTree } from '../datastructure/Tree/BinarySearchTree/AVLTree';
 import { RedBlackTree } from '../datastructure/Tree/BinarySearchTree/RedBlackTree';
@@ -46,13 +48,14 @@ import { BinarySearchVisualizer } from './BinarySearchVisualizer';
 import { GraphVisualizer } from './GraphVisualizer';
 import { SortVisualizer } from './SortVisualizer';
 import { KMPVisualizer } from './KMPVisualizer';
+import { BinaryHeapVisualizer } from './BinaryHeapVisualizer';
 
 export type DSInstance =
     | ArrayList | SinglyLinkedList | CircularLinkedList | DoubleLinkedList
     | BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree
     | BinarySearch | BinaryTreeTraversal | SegmentTree
-    | ArrayQueue | LinkedQueue | ArrayDeque | LinkedDeque | ArrayStack | LinkedStack | Trie
-    | UnionFindSet | BinaryIndexedTree
+    | ArrayQueue | LinkedQueue | ArrayDeque | LinkedDeque | BinaryHeap | ArrayStack | LinkedStack | Trie
+    | HashTable | UnionFindSet | BinaryIndexedTree
     | dijkstra | floyd | prim | kruskal
     | BubbleSort | InsertionSort | MergeSort | QuickSort | KMP;
 
@@ -173,6 +176,11 @@ export const REGISTRY: Record<VisualizerTypeValue, RegistryEntry> = {
         visualizer: TreeVisualizer,
         create: () => create(Trie),
     },
+    [VisualizerType.HASH_TABLE]: {
+        title: '哈希表',
+        visualizer: LinkedListVisualizer,
+        create: () => create(HashTable),
+    },
     [VisualizerType.UNION_FIND]: {
         title: '并查集',
         visualizer: UnionFindVisualizer,
@@ -182,6 +190,11 @@ export const REGISTRY: Record<VisualizerTypeValue, RegistryEntry> = {
         title: '树状数组',
         visualizer: ArrayVisualizer,
         create: () => create(BinaryIndexedTree, 8, 1),
+    },
+    [VisualizerType.BINARY_HEAP]: {
+        title: '二叉堆',
+        visualizer: BinaryHeapVisualizer,
+        create: () => create(BinaryHeap),
     },
     [VisualizerType.BINARY_SEARCH]: {
         title: '二分查找',

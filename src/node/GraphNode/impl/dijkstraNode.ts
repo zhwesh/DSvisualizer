@@ -9,7 +9,7 @@ export const dijkstra_node_BLUE: number = 2;    // 已在堆中或已出堆的�
 export const dijkstra_edge_NONE: number = 0;    // 非候选/非最短路树上的边
 export const dijkstra_edge_GREEN: number = 2;   // 最短路树上的边
 
-export class dijkstraNode extends DirectedGraphNode {
+export class DijkstraNode extends DirectedGraphNode {
     /**
      * 设置最短距离
      * 
@@ -82,7 +82,7 @@ export class dijkstraNode extends DirectedGraphNode {
 
     constructor(edges: number[][]) {
         super(edges);
-        dijkstraNode.weightAssert(edges);
+        DijkstraNode.weightAssert(edges);
         this.nodeColor = new Array(this.nodeCnt).fill(dijkstra_node_NONE);
         this.edgeColor = Array.from(
             { length: this.nodeCnt },

@@ -10,18 +10,34 @@ let stepController = StepController.getStepController();
 export class BinaryTreeTraversal {
     private node: BinaryTreeTraversalNode;
     private answer: ArrayNode;
+    private idx: number;
 
     constructor(tree: BinaryTreeTraversalNode) {
         this.node = tree;
-        this.answer = create(ArrayNode, []);
+        this.idx = 0;
+        this.answer = create(ArrayNode, Array(this.getSize(tree)).fill(null));
+    }
+
+    private getSize(node: BinaryTreeTraversalNode | null): number {
+        if (node === null) {
+            return 0;
+        }
+        return 1 + this.getSize(node.left) + this.getSize(node.right);
+    }
+
+    private init(): void {
+        this.node._clear_visited();
+        this.idx = 0;
+        for (let i = 0; i < this.answer.data.length; ++i) {
+            this.answer._set_value(i, null);
+        }
     }
 
     /**
      * 前序遍历
      */
     public async preOrderTraversal(): Promise<void> {
-        this.node._clear_visited();
-        this.answer._delete();
+        this.init();
 
         await this.preOrderTraversalImpl(this.node);
         messageController.message("前序遍历完成", MessageType.SUCCESS);
@@ -31,8 +47,7 @@ export class BinaryTreeTraversal {
      * 中序遍历
      */
     public async inOrderTraversal(): Promise<void> {
-        this.node._clear_visited();
-        this.answer._delete();
+        this.init();
 
         await this.inOrderTraversalImpl(this.node);
         messageController.message("中序遍历完成", MessageType.SUCCESS);
@@ -42,8 +57,7 @@ export class BinaryTreeTraversal {
      * 后序遍历
      */
     public async postOrderTraversal(): Promise<void> {
-        this.node._clear_visited();
-        this.answer._delete();
+        this.init();
 
         await this.postOrderTraversalImpl(this.node);
         messageController.message("后序遍历完成", MessageType.SUCCESS);
@@ -57,7 +71,7 @@ export class BinaryTreeTraversal {
         await stepController.wait();
         messageController.message("访问当前节点" + node.val, MessageType.INFO);
         node._set_visited(true);
-        this.answer._add_value(node.val);
+        this.answer._set_value(this.idx++, node.val);
         
         if (node.left != null) {
             await stepController.wait();
@@ -86,7 +100,7 @@ export class BinaryTreeTraversal {
         await stepController.wait();
         messageController.message("访问当前节点" + node.val, MessageType.INFO);
         node._set_visited(true);
-        this.answer._add_value(node.val);
+        this.answer._set_value(this.idx++, node.val);
 
         if (node.right !== null) {
             await stepController.wait();
@@ -115,6 +129,6 @@ export class BinaryTreeTraversal {
         await stepController.wait();
         messageController.message("访问当前节点" + node.val, MessageType.INFO);
         node._set_visited(true);
-        this.answer._add_value(node.val);
+        this.answer._set_value(this.idx++, node.val);
     }
 }

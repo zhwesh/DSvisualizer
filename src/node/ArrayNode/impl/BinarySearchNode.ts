@@ -1,5 +1,9 @@
 import { ArrayNode } from "../ArrayNode";
 
+// 原始数据颜色
+export const BinarySearch_GREEN: boolean = true;
+export const BinarySearch_NONE: boolean = false;
+
 /**
  * 二分查找算法节点
  */
@@ -37,6 +41,18 @@ export class BinarySearchNode extends ArrayNode {
         this.mid = mid;
     }
 
+    /**
+     * 设置数组颜色
+     * 
+     * 动画效果：让data[idx]颜色变为color
+     * 
+     * @param idx 索引
+     * @param color 颜色
+     */
+    public _set_color(idx: number, color: boolean) {
+        this.color[idx] = color;
+    }
+
     /************************************************** */
 
     private static ascendAssert(data: number[]): void {
@@ -50,10 +66,12 @@ export class BinarySearchNode extends ArrayNode {
     public left: number | null; 
     public right: number | null;
     public mid: number | null;
+    public color: boolean[];
 
     constructor(data: number[]) {
         BinarySearchNode.ascendAssert(data);
         super(data);
         this.left = this.right = this.mid = null;
+        this.color = Array(data.length).fill(BinarySearch_NONE);
     }
 };

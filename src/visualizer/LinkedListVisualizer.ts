@@ -26,7 +26,6 @@ interface LayoutItem {
     x: number;
     y: number;
     isSentinel: boolean;
-    bucket?: number;
 }
 
 // 高亮/闪烁颜色（查找、修改动画）
@@ -60,9 +59,15 @@ export class LinkedListVisualizer extends BaseVisualizer {
     private static readonly NODE_GAP = 36;
     private static readonly START_Y = 240;
     private static readonly CANVAS_W = 1200;
-    private static readonly ROW_GAP = 90;       // 哈希表桶行之间的垂直间距
+    // 哈希表：桶数组横排，桶内节点沿竖直方向向下延伸
+    private static readonly HASH_CELL_W = 64;
+    private static readonly HASH_CELL_H = 48;
+    private static readonly HASH_ROW_Y = 140;
+    private static readonly HASH_CHAIN_GAP = 52;
+    private static readonly HASH_NODE_GAP = 28;
 
-    // ---------- 原子操作分发 ----------
+    /************************************************** */
+    // 原子操作分发
     onOp(node: object, method: string, args: unknown[]): void {
         // 数据结构级操作（节点为数据结构实例本身）
         if (!(node instanceof LinkedNode)) {
@@ -173,27 +178,24 @@ export class LinkedListVisualizer extends BaseVisualizer {
 
         if (this.ds instanceof HashTable) {
             const arr = this.ds.getArr();
+            const bucketStartX = this.hashStartX(arr.length);
             arr.forEach((headNode, idx) => {
                 if (!headNode) return;
-                // 每个桶按自身长度水平居中（节点宽 + 节点间隙）
-                let len = 0;
-                let t: LinkedNodeView | null = headNode;
-                while (t) { len++; t = t.next; }
-                const totalW = len * LinkedListVisualizer.NODE_WIDTH + (len - 1) * LinkedListVisualizer.NODE_GAP;
-                const bucketStartX = Math.max(60, (LinkedListVisualizer.CANVAS_W - totalW) / 2);
                 let curr: LinkedNodeView | null = headNode;
-                let i = 0;
+                let depth = 0;
                 const maxIter = 200;
-                while (curr && i < maxIter) {
+                while (curr && depth < maxIter) {
                     result.push({
                         node: curr,
-                        x: bucketStartX + i * step,
-                        y: LinkedListVisualizer.START_Y + idx * LinkedListVisualizer.ROW_GAP,
+                        x: bucketStartX + idx * LinkedListVisualizer.HASH_CELL_W +
+                            (LinkedListVisualizer.HASH_CELL_W - LinkedListVisualizer.NODE_WIDTH) / 2,
+                        y: LinkedListVisualizer.HASH_ROW_Y + LinkedListVisualizer.HASH_CELL_H +
+                            LinkedListVisualizer.HASH_CHAIN_GAP +
+                            depth * (LinkedListVisualizer.NODE_HEIGHT + LinkedListVisualizer.HASH_NODE_GAP),
                         isSentinel: false,
-                        bucket: idx,
                     });
                     curr = curr.next;
-                    i++;
+                    ++depth;
                 }
             });
             return result;
@@ -339,6 +341,56 @@ export class LinkedListVisualizer extends BaseVisualizer {
     }
 
     /**
+     * 渲染哈希表桶数组：所有桶（包括空桶）横向排开，外链从桶下方垂直延伸。
+     */
+    private renderHashBuckets(): void {
+        const ds = this.ds;
+        if (!(ds instanceof HashTable)) return;
+        const arr = ds.getArr();
+        const startX = this.hashStartX(arr.length);
+
+        this.mainGroup.selectAll('.hash-bucket-layer').remove();
+        const layer = this.mainGroup.append('g').attr('class', 'hash-bucket-layer');
+
+        layer.append('text')
+            .attr('class', 'hash-bucket-label')
+            .attr('x', startX - 16)
+            .attr('y', LinkedListVisualizer.HASH_ROW_Y + LinkedListVisualizer.HASH_CELL_H / 2 + 5)
+            .attr('text-anchor', 'end')
+            .style('font-size', '14px')
+            .style('font-family', '"JetBrains Mono", SimHei, monospace')
+            .style('fill', '#555')
+            .text('buckets');
+
+        arr.forEach((_head, idx) => {
+            const g = layer.append('g')
+                .attr('class', 'hash-bucket')
+                .attr('data-bucket', idx)
+                .attr('transform', `translate(${startX + idx * LinkedListVisualizer.HASH_CELL_W}, ${LinkedListVisualizer.HASH_ROW_Y})`);
+
+            g.append('rect')
+                .attr('width', LinkedListVisualizer.HASH_CELL_W - 2)
+                .attr('height', LinkedListVisualizer.HASH_CELL_H)
+                .attr('fill', '#fff')
+                .attr('stroke', '#333')
+                .attr('stroke-width', 1.8);
+
+            g.append('text')
+                .attr('x', (LinkedListVisualizer.HASH_CELL_W - 2) / 2)
+                .attr('y', LinkedListVisualizer.HASH_CELL_H / 2 + 5)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '12px')
+                .style('font-family', '"JetBrains Mono", SimHei, monospace')
+                .style('fill', '#98a2b3')
+                .text(String(idx));
+        });
+    }
+
+    private hashStartX(count: number): number {
+        return Math.max(60, (LinkedListVisualizer.CANVAS_W - count * LinkedListVisualizer.HASH_CELL_W) / 2);
+    }
+
+    /**
      * 将整条链表的一次重绘加入动画队列。
      * @param duration 本次重绘需要等待的动画时长
      */
@@ -365,6 +417,11 @@ export class LinkedListVisualizer extends BaseVisualizer {
 
         // 1. 箭头（在节点下层）
         this.renderArrows(layout);
+
+        // 哈希表：桶数组横排，先画所有桶格（包括空桶）
+        if (this.mode === 'hashtable' && this.ds instanceof HashTable) {
+            this.renderHashBuckets();
+        }
 
         // 2. 节点（key取节点自身id，保证增删时复用同一个DOM元素）
         const nodeGroups = this.mainGroup.selectAll<SVGGElement, LayoutItem>('.linked-node')
@@ -442,6 +499,10 @@ export class LinkedListVisualizer extends BaseVisualizer {
      * 根据当前链表的实际包围盒自适应 viewBox，使链表始终填满画布中心
      */
     private fitViewBox(layout: LayoutItem[]): void {
+        if (this.mode === 'hashtable' && this.ds instanceof HashTable) {
+            this.fitHashViewBox(layout);
+            return;
+        }
         if (!layout || layout.length === 0) {
             this.svg.attr('viewBox', '0 0 1200 600');
             return;
@@ -468,6 +529,36 @@ export class LinkedListVisualizer extends BaseVisualizer {
         this.svg.attr('viewBox', `${x0} ${minY - PAD} ${w} ${h}`);
     }
 
+    private fitHashViewBox(layout: LayoutItem[]): void {
+        const ds = this.ds;
+        if (!(ds instanceof HashTable)) return;
+        const arr = ds.getArr();
+        const startX = this.hashStartX(arr.length);
+        const W = LinkedListVisualizer.NODE_WIDTH;
+        const H = LinkedListVisualizer.NODE_HEIGHT;
+        const PAD = 40;
+
+        let minX = startX - 90;
+        let maxX = startX + arr.length * LinkedListVisualizer.HASH_CELL_W + 20;
+        let minY = LinkedListVisualizer.HASH_ROW_Y - 30;
+        let maxY = LinkedListVisualizer.HASH_ROW_Y + LinkedListVisualizer.HASH_CELL_H;
+
+        layout.forEach(item => {
+            minX = Math.min(minX, item.x);
+            maxX = Math.max(maxX, item.x + W);
+            minY = Math.min(minY, item.y);
+            maxY = Math.max(maxY, item.y + H);
+        });
+
+        const contentW = maxX - minX;
+        const contentH = maxY - minY;
+        const w = Math.max(contentW + 2 * PAD, 420);
+        const h = Math.max(contentH + 2 * PAD, 240);
+        const x0 = (minX + maxX) / 2 - w / 2;
+        const y0 = (minY + maxY) / 2 - h / 2;
+        this.svg.attr('viewBox', `${x0} ${y0} ${w} ${h}`);
+    }
+
     /**
      * 渲染节点之间的箭头（按节点自身的next/last指针，含循环回指与哈希表桶标签）
      */
@@ -492,6 +583,12 @@ export class LinkedListVisualizer extends BaseVisualizer {
 
         const posById = new Map<number, LayoutItem>();
         layout.forEach(item => posById.set(item.node.getId(), item));
+
+        if (this.mode === 'hashtable' && this.ds instanceof HashTable) {
+            this.renderHashArrows(layer, posById);
+            return;
+        }
+
         const ring = this.mode === 'sentinel' && layout.length > 2;
 
         // 后继箭头：直接读节点自己的next指针，而不是假设渲染顺序相邻
@@ -530,26 +627,70 @@ export class LinkedListVisualizer extends BaseVisualizer {
                 .attr('marker-end', 'url(#arrowhead)')
                 .style('opacity', 0.7);
         });
+    }
 
-        // 哈希表：桶索引标签
-        if (this.mode === 'hashtable') {
-            const bucketSet = new Map<number, number>();
-            layout.forEach(item => {
-                if (item.bucket !== undefined && !bucketSet.has(item.bucket)) {
-                    bucketSet.set(item.bucket, item.x);
+    /**
+     * 哈希表箭头：桶格 -> 链头，以及链节点之间的竖直后继箭头。
+     */
+    private renderHashArrows(
+        layer: d3.Selection<SVGGElement, unknown, null, undefined>,
+        posById: Map<number, LayoutItem>,
+    ): void {
+        const ds = this.ds;
+        if (!(ds instanceof HashTable)) return;
+        const arr = ds.getArr();
+        const startX = this.hashStartX(arr.length);
+        const centerX = (idx: number): number =>
+            startX + idx * LinkedListVisualizer.HASH_CELL_W +
+            (LinkedListVisualizer.HASH_CELL_W - 2) / 2;
+
+        arr.forEach((head, idx) => {
+            if (!head) return;
+            const headItem = posById.get(head.getId());
+            if (!headItem) return;
+
+            // 桶格底部 -> 链头节点顶部
+            this.drawHashArrow(
+                layer,
+                centerX(idx),
+                LinkedListVisualizer.HASH_ROW_Y + LinkedListVisualizer.HASH_CELL_H,
+                headItem.x + LinkedListVisualizer.NODE_WIDTH / 2,
+                headItem.y,
+            );
+
+            // 链节点 -> 下一个链节点
+            let curr: LinkedNodeView | null = head;
+            while (curr) {
+                const from = posById.get(curr.getId());
+                const next: LinkedNodeView | null = curr.next;
+                const to = next ? posById.get(next.getId()) : undefined;
+                if (from && to) {
+                    this.drawHashArrow(
+                        layer,
+                        from.x + LinkedListVisualizer.NODE_WIDTH / 2,
+                        from.y + LinkedListVisualizer.NODE_HEIGHT,
+                        to.x + LinkedListVisualizer.NODE_WIDTH / 2,
+                        to.y,
+                    );
                 }
-            });
-            bucketSet.forEach((x, bucket) => {
-                layer.append('text')
-                    .attr('class', 'bucket-label')
-                    .attr('x', x - 30)
-                    .attr('y', LinkedListVisualizer.START_Y + bucket * LinkedListVisualizer.ROW_GAP + LinkedListVisualizer.NODE_HEIGHT / 2 + 5)
-                    .style('font-size', '13px')
-                    .style('font-family', '"JetBrains Mono", SimHei, monospace')
-                    .style('fill', '#7f8c8d')
-                    .text('[' + bucket + ']');
-            });
-        }
+                curr = next;
+            }
+        });
+    }
+
+    private drawHashArrow(
+        layer: d3.Selection<SVGGElement, unknown, null, undefined>,
+        x1: number, y1: number, x2: number, y2: number,
+    ): void {
+        layer.append('line')
+            .attr('class', 'link-line hash-link')
+            .attr('x1', x1)
+            .attr('y1', y1)
+            .attr('x2', x2)
+            .attr('y2', y2)
+            .attr('stroke', '#666')
+            .attr('stroke-width', 2)
+            .attr('marker-end', 'url(#arrowhead)');
     }
 
     /**

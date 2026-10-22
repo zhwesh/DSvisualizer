@@ -39,7 +39,8 @@ interface TrieLayoutItem {
     order: number;
 }
 
-// ---------- 配色 ----------
+/************************************************** */
+// 配色
 const COLOR_RED = '#e74c3c';
 const COLOR_BLACK = '#2c3e50';
 const COLOR_WHITE = '#ffffff';
@@ -65,6 +66,8 @@ export class TreeVisualizer extends BaseVisualizer {
     private mode: 'binary' | 'trie' = 'binary';
     // 遍历结果数组
     private answerNode: ArrayNode | null = null;
+    // 遍历结果行始终保持的格子数（算法层 _delete 清空数据时不缩短）
+    private answerLength = 0;
     // 遍历结果行的水平范围（用于 viewBox 纳入）
     private answerRowX0 = 0;
     private answerRowX1 = 0;
@@ -96,11 +99,12 @@ export class TreeVisualizer extends BaseVisualizer {
     private static readonly MIN_VIEW_W = 340;
     private static readonly MIN_VIEW_H = 240;
 
-    // ---------- 原子操作分发 ----------
+    /************************************************** */
+    // 原子操作分发
     onOp(node: object, method: string, args: unknown[]): void {
         // 遍历结果数组
         if (node instanceof ArrayNode) {
-            this.handleAnswerArray(node);
+            this.handleAnswerArray(node, method, args);
             return;
         }
         // Trie节点（多叉树节点）
@@ -701,7 +705,8 @@ export class TreeVisualizer extends BaseVisualizer {
         lines.exit().remove();
     }
 
-    // ================== Trie（多叉树）渲染 ==================
+    /************************************************** */
+    // Trie（多叉树）渲染
 
     /**
      * 收集Trie节点（BFS），返回 节点/父节点/边字母/深度/层内序号
@@ -858,28 +863,56 @@ export class TreeVisualizer extends BaseVisualizer {
         this.fitViewBox(Array.from(posMap.values()));
     }
 
-    // ================== 遍历结果数组 ==================
+    /************************************************** */
+    // 遍历结果数组
 
     /**
-     * 处理遍历结果数组
+     * 处理遍历结果数组。
+     *
+     * 算法层已经预分配 n 个槽位，并用 _set_value 填充；
+     * 这里不能因为 _delete 把显示长度缩回 0，否则预分配的空格子会消失。
      */
-    private handleAnswerArray(node: ArrayNode): void {
-        this.answerNode = node;
-        this.animations.enqueue(async () => {
-            this.renderAnswerArray();
-            await this.delay(180);
+    private handleAnswerArray(node: ArrayNode, method: string, args: unknown[]): void {
+        if (this.answerNode !== node || method === '_create') {
+            this.answerNode = node;
+            this.answerLength = node.data.length;
+        } else {
+            this.answerLength = Math.max(this.answerLength, node.data.length);
+        }
+
+        const highlightIdx = method === '_set_value' ? args[0] as number : null;
+        this.animations.enqueue(() => {
+            this.renderAnswerArray(highlightIdx);
+            this.fitAnswerViewBox();
         });
     }
 
     /**
-     * 渲染底部遍历结果行
+     * 让当前树和遍历结果行一起进入 viewBox。
+     * 遍历时通常只有 _set_visited/_set_value，不会触发整树 render，
+     * 因此必须在这里单独适配，否则 y=540 的结果行会被裁掉。
      */
-    private renderAnswerArray(): void {
-        this.mainGroup.selectAll('.answer-row').remove();
-        if (!this.answerNode) return;
+    private fitAnswerViewBox(): void {
+        if (this.mode !== 'binary') return;
+        const layout = this.layoutTree();
+        const points = layout.length > 0
+            ? layout.map(item => ({ x: item.x, y: item.y }))
+            : [{ x: TreeVisualizer.START_X, y: TreeVisualizer.START_Y }];
+        this.fitViewBox(points);
+    }
+
+    /**
+     * 渲染底部遍历结果行。
+     * 槽位只创建一次，_set_value 时只更新对应格子的数字，避免整行反复重建。
+     */
+    private renderAnswerArray(highlightIdx: number | null = null): void {
+        if (!this.answerNode) {
+            this.mainGroup.selectAll('.answer-row').remove();
+            return;
+        }
 
         const data = this.answerNode.data;
-        const n = data.length;
+        const n = Math.max(this.answerLength, data.length);
         const cellW = 40;
         const cellH = 40;
         // 结果行整体以画布中心 x=600 居中排布，避免被 viewBox 左边界裁切
@@ -891,34 +924,65 @@ export class TreeVisualizer extends BaseVisualizer {
         this.answerRowX0 = startX - 70;
         this.answerRowX1 = startX + n * cellW;
 
-        const g = this.mainGroup.append('g').attr('class', 'answer-row');
-        g.append('text')
-            .attr('x', startX - 70)
+        let g = this.mainGroup.select<SVGGElement>('g.answer-row');
+        if (g.empty()) {
+            g = this.mainGroup.append('g').attr('class', 'answer-row');
+        }
+        let label = g.select<SVGTextElement>('text.answer-label');
+        if (label.empty()) {
+            label = g.append('text').attr('class', 'answer-label');
+        }
+        label
+            .attr('x', startX - 12)
             .attr('y', y + cellH / 2 + 5)
+            .attr('text-anchor', 'end')
             .style('font-size', '13px')
             .style('font-family', '"JetBrains Mono", SimHei, monospace')
             .style('fill', '#555')
             .text('遍历结果');
 
-        data.forEach((v, i) => {
-            const cg = g.append('g')
-                .attr('transform', `translate(${startX + i * cellW}, ${y})`)
-                .style('opacity', 0);
-            cg.append('rect')
-                .attr('width', cellW)
-                .attr('height', cellH)
-                .attr('fill', '#fdf6e3')
-                .attr('stroke', '#888')
-                .attr('stroke-width', 1);
-            cg.append('text')
-                .attr('x', cellW / 2)
-                .attr('y', cellH / 2 + 5)
-                .attr('text-anchor', 'middle')
-                .style('font-size', '14px')
-                .style('font-family', '"JetBrains Mono", SimHei, monospace')
-                .text(v !== null ? String(v) : '');
-            cg.transition().delay(i * 60).duration(200).style('opacity', 1);
+        const indices = Array.from({ length: n }, (_, i) => i);
+        const cells = g.selectAll<SVGGElement, number>('g.answer-cell')
+            .data(indices, (idx: number) => idx);
+
+        const enter = cells.enter()
+            .append('g')
+            .attr('class', 'answer-cell')
+            .style('opacity', 1);
+
+        enter.append('rect')
+            .attr('width', cellW)
+            .attr('height', cellH)
+            .attr('fill', '#fdf6e3')
+            .attr('stroke', '#888')
+            .attr('stroke-width', 1);
+
+        enter.append('text')
+            .attr('x', cellW / 2)
+            .attr('y', cellH / 2 + 5)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '14px')
+            .style('font-family', '"JetBrains Mono", SimHei, monospace');
+
+        const merged = enter.merge(cells);
+        merged.attr('transform', (idx: number) => `translate(${startX + idx * cellW}, ${y})`);
+        merged.select('text').text((idx: number) => {
+            const value = data[idx];
+            return value !== null && value !== undefined ? String(value) : '';
         });
+
+        // 只高亮本次写入的格子，整行不会重新淡入
+        if (highlightIdx !== null && highlightIdx >= 0 && highlightIdx < n) {
+            merged.filter((idx: number) => idx === highlightIdx)
+                .select('rect')
+                .interrupt()
+                .attr('fill', COLOR_FLASH)
+                .transition()
+                .duration(180)
+                .attr('fill', '#fdf6e3');
+        }
+
+        cells.exit().remove();
     }
 
     /**
@@ -978,6 +1042,7 @@ export class TreeVisualizer extends BaseVisualizer {
         this.ds = null;
         this.mode = 'binary';
         this.answerNode = null;
+        this.answerLength = 0;
         this.answerRowX0 = 0;
         this.answerRowX1 = 0;
         this.rebuildSequence = null;

@@ -5,7 +5,7 @@ export const floyd_node_NONE: number = 0;   // 当前未处理的节点
 export const floyd_node_GREEN: number = 1;  // 中间节点
 export const floyd_node_BLUE: number = 2;   // 当前正在处理的节点
 
-export class floydNode extends DirectedGraphNode {
+export class FloydNode extends DirectedGraphNode {
     /**
      * 设置从u到v的最短距离
      * 
@@ -60,7 +60,7 @@ export class floydNode extends DirectedGraphNode {
 
     constructor(edges: number[][]) {
         super(edges);
-        floydNode.weightAssert(edges);
+        FloydNode.weightAssert(edges);
         this.nodeColor = new Array(this.nodeCnt).fill(floyd_node_NONE);
         this.dis = Array.from(
             { length: this.nodeCnt },

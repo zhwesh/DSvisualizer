@@ -1,5 +1,5 @@
 import {
-    floydNode, floyd_node_GREEN,
+    FloydNode, floyd_node_GREEN,
     floyd_node_BLUE, floyd_node_NONE
 } from "../../node/GraphNode/impl/FloydNode";
 import { MessageController, MessageType } from "../../controller/MessageController";
@@ -13,10 +13,10 @@ let stepController = StepController.getStepController();
  * floyd算法求最短路
  */
 export class floyd {
-    private node: floydNode;
+    private node: FloydNode;
 
     constructor(edges: number[][]) {
-        this.node = create(floydNode, edges);
+        this.node = create(FloydNode, edges);
     }
 
     // 初始化
