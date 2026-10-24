@@ -228,9 +228,10 @@ const submitDialog = (): void => {
 
 <style scoped>
 .control-panel {
-    width: 240px;
+    width: 100%;
     min-width: 0;
-    height: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
     padding: 14px 14px 24px;
     overflow-y: auto;
     background: #f7f9fc;

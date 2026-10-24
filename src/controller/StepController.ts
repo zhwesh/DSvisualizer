@@ -80,6 +80,13 @@ export class StepController {
     }
 
     /**
+     * 当前是否处于自动播放状态
+     */
+    public isPlaying(): boolean {
+        return this.status === StepStatus.PLAYING;
+    }
+
+    /**
      * 设置状态（由图形界面层调用）
      * @param status 新状态
      */

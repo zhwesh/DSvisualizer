@@ -82,7 +82,6 @@ export class BinaryIndexedTreeNode extends ArrayNode {
         super(new Array(n + 1).fill(initialValue));
         this.data[0] = 0;
         this.tree = new Array(n + 1).fill(0);
-        // 初始原始数据全为 initialValue 时，tree[i] 对应区间长度为 lowbit(i)
         for (let i = 1; i <= n; ++i) {
             this.tree[i] = initialValue * (i & -i);
         }

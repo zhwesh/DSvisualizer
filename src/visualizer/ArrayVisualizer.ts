@@ -94,6 +94,7 @@ interface SwapAction {
 export class ArrayVisualizer extends BaseVisualizer {
     // 数组节点 ID -> 渲染信息（DOM 组、单元格尺寸、布局起点等）
     private arrayNodes: Map<number, ArrayGroupInfo> = new Map();
+    private mainArrayId: number | null = null;
 
     // 数组节点 ID -> 可视化层当前显示的数据快照。
     // 这是动画期间渲染的唯一数据源，用来避免“算法层已完成、但动画还没播完”。
@@ -290,8 +291,11 @@ export class ArrayVisualizer extends BaseVisualizer {
      */
     private handleCreate(node: ArrayNode): void {
         const id = node.getId();
+        if (this.mainArrayId === null) {
+            this.mainArrayId = id;
+        }
 
-        // 初始化可视化快照；之后队列中的交换都会基于这份快照逐步更新
+        // 初始化可视化快照，之后由原子操作逐项更新
         this.visualData.set(id, [...node.data]);
 
         const startX = 80;
@@ -536,7 +540,7 @@ export class ArrayVisualizer extends BaseVisualizer {
         }
         // 左侧留出数组标签（template 等较长标签）的宽度，右侧只留少量边距
         const PAD_LEFT = 96;
-        const PAD_RIGHT = 28;
+        const PAD_RIGHT = 56;
         const PAD_Y = 60;   // 容纳上下两侧的指针名与共享箭头
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         this.arrayNodes.forEach(info => {
@@ -909,6 +913,15 @@ export class ArrayVisualizer extends BaseVisualizer {
      */
     private async applyDelete(nodeId: number): Promise<void> {
         const info = this.arrayNodes.get(nodeId);
+        if (nodeId === this.mainArrayId) {
+            this.visualData.set(nodeId, []);
+            if (info) {
+                this.renderGroup(info);
+                this.fitViewBox();
+            }
+            return;
+        }
+
         this.visualData.delete(nodeId);
         if (!info) return;
 
@@ -921,6 +934,12 @@ export class ArrayVisualizer extends BaseVisualizer {
         info.group.remove();
 
         this.arrayNodes.delete(nodeId);
+        let nextY = 80;
+        this.arrayNodes.forEach(item => {
+            nextY = Math.max(nextY, item.startY + ArrayVisualizer.ARRAY_GAP);
+        });
+        this.nextArrayY = nextY;
+        this.fitViewBox();
     }
 
     /**
@@ -946,6 +965,7 @@ export class ArrayVisualizer extends BaseVisualizer {
     destroy(): void {
         this.arrayNodes.clear();
         this.visualData.clear();
+        this.mainArrayId = null;
         super.destroy();
     }
 
@@ -957,6 +977,7 @@ export class ArrayVisualizer extends BaseVisualizer {
         super.clear();
         this.arrayNodes.clear();
         this.visualData.clear();
+        this.mainArrayId = null;
         this.nextArrayY = 80;
     }
 }

@@ -84,7 +84,7 @@ export class LinkedList {
      * @param idx 索引
      * @returns 值
      */
-    public async get(idx: number): Promise<number | null> {
+    public async at(idx: number): Promise<number | null> {
         const node = this.getNode(idx);
         if (node === null) {
             return null;
@@ -100,7 +100,7 @@ export class LinkedList {
      * @param idx 索引
      * @param val 新值
      */
-    public async set(idx: number, val: number): Promise<void> {
+    public async update(idx: number, val: number): Promise<void> {
         const node = this.getNode(idx);
         if (node === null) {
             return;
@@ -152,7 +152,7 @@ export class LinkedList {
      * 删除索引为idx的元素
      * @param idx 索引
      */
-    public async delete(idx: number): Promise<void> {
+    public async erase(idx: number): Promise<void> {
         if (idx < 0 || idx >= this.sz) {
             messageController.message("元素不存在", MessageType.ERROR);
             return;

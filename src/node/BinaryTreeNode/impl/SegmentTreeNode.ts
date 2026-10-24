@@ -26,10 +26,22 @@ export class SegmentTreeNode extends BinaryTreeNode<SegmentTreeNode> {
         this.sum = sum;
     }
 
+    /**
+     * 设置节点是否为当前高亮节点
+     * 
+     * 动画效果：visited为真时在节点外圈显示高亮环，否则取消外圈
+     * 
+     * @param visited 是否高亮
+     */
+    public _set_visited(visited: boolean): void {
+        this.visited = visited;
+    }
+
     /************************************************** */
 
     public lazy: number | null; // 懒更新信息
     public sum: number | null;  // 当前区间的和
+    public visited: boolean;
 
     constructor(
         left: SegmentTreeNode | null,
@@ -40,5 +52,6 @@ export class SegmentTreeNode extends BinaryTreeNode<SegmentTreeNode> {
         super(left, right);
         this.sum = sum;
         this.lazy = lazy;
+        this.visited = false;
     }
 }

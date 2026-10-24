@@ -7,21 +7,30 @@ const emit = defineEmits<{
     (e: 'pause'): void;
     (e: 'step'): void;
 }>();
+
+const emitAndBlur = (action: 'play' | 'fast' | 'pause' | 'step', event: MouseEvent): void => {
+    if (action === 'play') emit('play');
+    else if (action === 'fast') emit('fast');
+    else if (action === 'pause') emit('pause');
+    else emit('step');
+    const target = event.currentTarget as HTMLElement | null;
+    target?.blur();
+};
 </script>
 
 <template>
     <div class="step-controls">
         <div class="control-row">
-            <button class="control-btn" title="播放" aria-label="播放" @click="emit('play')">
+            <button class="control-btn" title="播放" aria-label="播放" @click="emitAndBlur('play', $event)">
                 <AppIcon name="play" :size="15" />
             </button>
-            <button class="control-btn" title="快进" aria-label="快进" @click="emit('fast')">
+            <button class="control-btn" title="快进" aria-label="快进" @click="emitAndBlur('fast', $event)">
                 <AppIcon name="fastForward" :size="15" />
             </button>
-            <button class="control-btn" title="暂停" aria-label="暂停" @click="emit('pause')">
+            <button class="control-btn" title="暂停" aria-label="暂停" @click="emitAndBlur('pause', $event)">
                 <AppIcon name="pause" :size="15" />
             </button>
-            <button class="control-btn" title="单步执行" aria-label="单步执行" @click="emit('step')">
+            <button class="control-btn" title="单步执行" aria-label="单步执行" @click="emitAndBlur('step', $event)">
                 <AppIcon name="stepForward" :size="15" />
             </button>
         </div>

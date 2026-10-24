@@ -21,9 +21,9 @@ export async function testDoubleLinkedList(): Promise<string> {
     await list.insert(0, 1);
     await list.insert(1, 2);
     await list.insert(2, 3);
-    await list.delete(0);
-    await list.delete(1);
-    await list.delete(0);
+    await list.erase(0);
+    await list.erase(1);
+    await list.erase(0);
     assert(deleted.length === 3, "应删除3个节点，实际为" + deleted.length);
     for (const node of deleted) {
         assert(node.val === null && node.next === null && node.last === null, "已删除节点应清空val/next/last");

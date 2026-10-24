@@ -11,7 +11,7 @@ export class ArrayQueueNode extends ArrayNode {
      * 
      * @param head 队首指针索引
      */
-    public _set_head(head: number | null): void {
+    public _set_head(head: number): void {
         this.head = head;
     }
 
@@ -22,19 +22,19 @@ export class ArrayQueueNode extends ArrayNode {
      * 
      * @param tail 队尾指针索引
      */
-    public _set_tail(tail: number | null): void {
+    public _set_tail(tail: number): void {
         this.tail = tail;
     }
 
     /************************************************** */
 
-    // 队首指针（当值为null时不显示）
-    public head: number | null;
-    // 队尾指针（当值为null时不显示）
-    public tail: number | null;
+    // 队首指针
+    public head: number;
+    // 队尾指针
+    public tail: number;
 
     constructor(data: (number | null)[]) {
         super(data);
-        this.head = this.tail = null;
+        this.head = this.tail = 0;
     }
 }

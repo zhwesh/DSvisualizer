@@ -6,16 +6,19 @@ import { MessageController, MessageType } from './controller/MessageController';
 // 核心
 import { create } from './node/factory';
 import { DataNode } from './node/DataNode';
+import { BinaryTreeTraversalNode } from './node/BinaryTreeNode/impl/BinaryTreeTraversalNode';
 import { VisualizerManager, VisualizerType } from './visualizer/VisualizerManager';
 import { SortVisualizer } from './visualizer/SortVisualizer';
 import { LinkedListVisualizer } from './visualizer/LinkedListVisualizer';
 import { createGraphStructure, createStructure, getGraphEdges, getStructureTitle, type DSInstance } from './visualizer/registry';
+import { structureInfo } from './content/structureInfo';
 // 组件
 import MenuSidebar, { type MenuNode } from './components/MenuSidebar.vue';
 import StatsPanel from './components/StatsPanel.vue';
 import StepControls from './components/StepControls.vue';
 import MessagePanel, { type UiMessage } from './components/MessagePanel.vue';
 import ControlPanel, { type ControlGroupDef, type ControlInputDef } from './components/ControlPanel.vue';
+import CommandPanel from './components/CommandPanel.vue';
 // 数据结构
 import { ArrayList } from './datastructure/List/ArrayList';
 import { LinkedList as SinglyLinkedList } from './datastructure/List/SinglyLinkedList';
@@ -70,12 +73,12 @@ const OP = {
     HASH_ADD: '插入键',
     HASH_FIND: '查找键',
     HASH_REMOVE: '删除键',
-    DEQUE_FIRST: '头部入队',
-    DEQUE_LAST: '尾部入队',
-    DEQUE_POP_FIRST: '头部出队',
-    DEQUE_POP_LAST: '尾部出队',
-    DEQUE_GET_FIRST: '取队首',
-    DEQUE_GET_LAST: '取队尾',
+    DEQUE_FRONT: '头部入队',
+    DEQUE_BACK: '尾部入队',
+    DEQUE_POP_FRONT: '头部出队',
+    DEQUE_POP_BACK: '尾部出队',
+    DEQUE_GET_FRONT: '取队首',
+    DEQUE_GET_BACK: '取队尾',
     SEG_ADD: '区间加',
     SEG_QUERY: '区间求和',
     UNION_FIND_UNION: '合并集合',
@@ -112,6 +115,19 @@ const currentOp = ref<string>(OP.RESTART);
 const currentResult = ref<string | null>(null);
 const stats = ref({ size: 0 });
 const messages = ref<UiMessage[]>([]);
+interface CommandLine {
+    text: string;
+    type: 'input' | 'output' | 'error' | 'info';
+}
+interface CommandHelp {
+    title: string;
+    commands: { command: string; description: string }[];
+    notes: string[];
+}
+type LinearList = ArrayList | SinglyLinkedList | CircularLinkedList | DoubleLinkedList;
+const commandLines = ref<CommandLine[]>([]);
+const pageInfoOpen = ref(false);
+const pageInfoBackdropPressed = ref(false);
 const bsVars = ref({ left: 0, right: 9, mid: 4, target: 0 });
 const svgRef = ref<SVGSVGElement | null>(null);
 const appRef = ref<HTMLElement | null>(null);
@@ -143,10 +159,253 @@ const SIDEBAR_MAX = 460;
 const CONTROL_MIN = 200;
 const CONTROL_MAX = 520;
 const MESSAGE_MIN = 72;
+const COMMAND_MIN = 100;
+const COMMAND_DEFAULT_HEIGHT = 220;
 
 const sidebarWidth = ref(readStoredSize('dsvisualizer.layout.sidebarWidth', 220));
 const controlWidth = ref(readStoredSize('dsvisualizer.layout.controlWidth', 240));
 const messageHeight = ref(readStoredSize('dsvisualizer.layout.messageHeight', 180));
+const commandHeight = ref(readStoredSize('dsvisualizer.layout.commandHeight', COMMAND_DEFAULT_HEIGHT));
+
+/************************************************** */
+// 设置弹窗与本地持久化
+interface ShortcutSettings {
+    step: string;
+    playPause: string;
+    fast: string;
+}
+
+type ShortcutAction = keyof ShortcutSettings;
+
+interface AppSettings {
+    playInterval: number;
+    shortcuts: ShortcutSettings;
+    theme: ThemeMode;
+}
+
+type ThemeMode = 'light' | 'dark';
+
+const PLAY_INTERVAL_MIN = 0.1;
+const PLAY_INTERVAL_MAX = 10;
+const SETTINGS_STORAGE_KEY = 'dsvisualizer.settings';
+const LEGACY_PLAY_INTERVAL_KEY = 'dsvisualizer.settings.playInterval';
+const DEFAULT_SHORTCUTS: ShortcutSettings = {
+    step: 'Enter',
+    playPause: 'Space',
+    fast: 'Ctrl+Enter',
+};
+
+const validPlayInterval = (value: unknown): number | null => {
+    const number = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(number) && number >= PLAY_INTERVAL_MIN && number <= PLAY_INTERVAL_MAX
+        ? number
+        : null;
+};
+
+const normalizeShortcutString = (value: unknown): string | null => {
+    if (typeof value !== 'string') return null;
+    const parts = value.split('+').map(part => part.trim()).filter(Boolean);
+    if (parts.length === 0) return null;
+    const modifiers = new Set<string>();
+    let key = '';
+    for (const part of parts) {
+        const lower = part.toLowerCase();
+        if (lower === 'ctrl' || lower === 'control') modifiers.add('Ctrl');
+        else if (lower === 'alt' || lower === 'option') modifiers.add('Alt');
+        else if (lower === 'shift') modifiers.add('Shift');
+        else if (lower === 'meta' || lower === 'cmd' || lower === 'command') modifiers.add('Meta');
+        else key = part;
+    }
+    if (key === '') return null;
+    const keyMap: Record<string, string> = {
+        space: 'Space',
+        enter: 'Enter',
+        escape: 'Escape',
+        esc: 'Escape',
+        tab: 'Tab',
+        backspace: 'Backspace',
+        delete: 'Delete',
+        insert: 'Insert',
+        home: 'Home',
+        end: 'End',
+        pageup: 'PageUp',
+        pagedown: 'PageDown',
+        arrowup: 'ArrowUp',
+        arrowdown: 'ArrowDown',
+        arrowleft: 'ArrowLeft',
+        arrowright: 'ArrowRight',
+    };
+    const lowerKey = key.toLowerCase();
+    const normalizedKey = keyMap[lowerKey] ?? (key.length === 1 ? key.toUpperCase() : key);
+    const order = ['Ctrl', 'Alt', 'Shift', 'Meta'];
+    return [...order.filter(modifier => modifiers.has(modifier)), normalizedKey].join('+');
+};
+
+const readSettings = (): AppSettings => {
+    const defaults: AppSettings = {
+        playInterval: PLAY_TIME_INTERVAL,
+        shortcuts: { ...DEFAULT_SHORTCUTS },
+        theme: 'light',
+    };
+    let data: Record<string, unknown> | null = null;
+    let legacyInterval: number | null = null;
+    try {
+        legacyInterval = validPlayInterval(window.localStorage.getItem(LEGACY_PLAY_INTERVAL_KEY));
+        const raw = window.localStorage.getItem(SETTINGS_STORAGE_KEY);
+        if (raw !== null) {
+            const parsed = JSON.parse(raw) as unknown;
+            if (parsed !== null && typeof parsed === 'object') {
+                data = parsed as Record<string, unknown>;
+            }
+        }
+    } catch {
+        data = null;
+    }
+    if (data !== null) {
+        const interval = validPlayInterval(data.playInterval) ?? legacyInterval ?? defaults.playInterval;
+        const savedShortcuts = data.shortcuts as Record<string, unknown> | undefined;
+        const step = normalizeShortcutString(savedShortcuts?.step) ?? defaults.shortcuts.step;
+        const playPause = normalizeShortcutString(savedShortcuts?.playPause) ?? defaults.shortcuts.playPause;
+        const fast = normalizeShortcutString(savedShortcuts?.fast) ?? defaults.shortcuts.fast;
+        const values = [step, playPause, fast];
+        return {
+            playInterval: interval,
+            shortcuts: new Set(values).size === values.length
+                ? { step, playPause, fast }
+                : { ...DEFAULT_SHORTCUTS },
+            theme: data.theme === 'dark' ? 'dark' : 'light',
+        };
+    }
+    if (legacyInterval !== null) {
+        defaults.playInterval = legacyInterval;
+    }
+    return defaults;
+};
+
+const savedSettings = readSettings();
+const playInterval = ref(savedSettings.playInterval);
+const shortcuts = ref<ShortcutSettings>({ ...savedSettings.shortcuts });
+const theme = ref<ThemeMode>(savedSettings.theme);
+const settingsOpen = ref(false);
+const settingsBackdropPressed = ref(false);
+const settingsDraft = ref(String(playInterval.value));
+const shortcutDrafts = ref<ShortcutSettings>({ ...shortcuts.value });
+const themeDraft = ref<ThemeMode>(theme.value);
+const settingsError = ref('');
+
+const applyTheme = (mode: ThemeMode): void => {
+    document.documentElement.dataset.theme = mode;
+};
+applyTheme(theme.value);
+
+const shortcutFromEvent = (event: KeyboardEvent): string | null => {
+    if (event.key === 'Control' || event.key === 'Shift' ||
+        event.key === 'Alt' || event.key === 'Meta' ||
+        event.key === 'Tab' || event.key === 'Dead') {
+        return null;
+    }
+    const key = event.key === ' ' ? 'Space'
+        : event.key.length === 1 ? event.key.toUpperCase()
+            : event.key;
+    const parts: string[] = [];
+    if (event.ctrlKey) parts.push('Ctrl');
+    if (event.altKey) parts.push('Alt');
+    if (event.shiftKey) parts.push('Shift');
+    if (event.metaKey) parts.push('Meta');
+    parts.push(key);
+    return parts.join('+');
+};
+
+const captureShortcut = (action: ShortcutAction, event: KeyboardEvent): void => {
+    if (event.key === 'Tab' || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const value = shortcutFromEvent(event);
+    if (value !== null) {
+        shortcutDrafts.value[action] = value;
+        settingsError.value = '';
+    }
+};
+
+const resetSettingsDrafts = (): void => {
+    settingsDraft.value = String(PLAY_TIME_INTERVAL);
+    shortcutDrafts.value = { ...DEFAULT_SHORTCUTS };
+    themeDraft.value = 'light';
+    applyTheme('light');
+    settingsError.value = '';
+};
+
+const toggleThemeDraft = (): void => {
+    themeDraft.value = themeDraft.value === 'dark' ? 'light' : 'dark';
+    applyTheme(themeDraft.value);
+};
+
+const cancelSettings = (): void => {
+    themeDraft.value = theme.value;
+    applyTheme(theme.value);
+    settingsOpen.value = false;
+};
+
+const persistSettings = (): void => {
+    const data: AppSettings = {
+        playInterval: playInterval.value,
+        shortcuts: { ...shortcuts.value },
+        theme: theme.value,
+    };
+    try {
+        window.localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(data));
+    } catch {
+        // 隐私模式等场景下忽略存储失败
+    }
+};
+
+const openSettings = (): void => {
+    settingsDraft.value = String(playInterval.value);
+    shortcutDrafts.value = { ...shortcuts.value };
+    themeDraft.value = theme.value;
+    applyTheme(theme.value);
+    settingsError.value = '';
+    settingsBackdropPressed.value = false;
+    settingsOpen.value = true;
+};
+
+const onSettingsPointerDown = (event: PointerEvent): void => {
+    settingsBackdropPressed.value = event.target === event.currentTarget;
+};
+
+const onSettingsClick = (event: MouseEvent): void => {
+    if (settingsBackdropPressed.value && event.target === event.currentTarget) {
+        cancelSettings();
+    }
+    settingsBackdropPressed.value = false;
+};
+
+const applySettings = (): void => {
+    const value = validPlayInterval(settingsDraft.value);
+    if (value === null) {
+        settingsError.value = `请输入 ${PLAY_INTERVAL_MIN} 到 ${PLAY_INTERVAL_MAX} 秒之间的数字`;
+        return;
+    }
+    const nextShortcuts = { ...shortcutDrafts.value };
+    const values = Object.values(nextShortcuts);
+    if (values.some(item => item.trim() === '')) {
+        settingsError.value = '快捷键不能为空';
+        return;
+    }
+    if (new Set(values).size !== values.length) {
+        settingsError.value = '快捷键不能重复';
+        return;
+    }
+    playInterval.value = Math.round(value * 100) / 100;
+    shortcuts.value = nextShortcuts;
+    theme.value = themeDraft.value;
+    applyTheme(theme.value);
+    if (opRunning.value && stepController.isPlaying() && !stepController.isFastMode()) {
+        stepController.setTimeInterval(playInterval.value);
+    }
+    persistSettings();
+    settingsOpen.value = false;
+};
 
 const sidebarStyle = computed(() => ({
     width: sidebarWidth.value + 'px',
@@ -160,8 +419,12 @@ const messageStyle = computed(() => ({
     height: messageHeight.value + 'px',
     flex: `0 0 ${messageHeight.value}px`,
 }));
+const commandStyle = computed(() => ({
+    height: commandHeight.value + 'px',
+    flex: `0 0 ${commandHeight.value}px`,
+}));
 
-type ResizeTarget = 'sidebar' | 'control' | 'messages';
+type ResizeTarget = 'sidebar' | 'control' | 'messages' | 'command';
 
 interface ResizeState {
     target: ResizeTarget;
@@ -182,6 +445,9 @@ const resizeRange = (target: ResizeTarget): [number, number] => {
     if (target === 'control') {
         return [CONTROL_MIN, Math.max(CONTROL_MIN, Math.min(CONTROL_MAX, width * 0.5))];
     }
+    if (target === 'command') {
+        return [COMMAND_MIN, Math.max(COMMAND_MIN, height - 160)];
+    }
     return [MESSAGE_MIN, Math.max(MESSAGE_MIN, height - 220)];
 };
 
@@ -200,11 +466,14 @@ const beginResize = (target: ResizeTarget, event: PointerEvent): void => {
         startY: event.clientY,
         startSize: target === 'sidebar' ? sidebarWidth.value
             : target === 'control' ? controlWidth.value
-                : messageHeight.value,
+                : target === 'command' ? commandHeight.value
+                    : messageHeight.value,
     };
     resizingTarget.value = target;
     document.body.style.userSelect = 'none';
-    document.body.style.cursor = target === 'messages' ? 'row-resize' : 'col-resize';
+    document.body.style.cursor = target === 'messages' || target === 'command'
+        ? 'row-resize'
+        : 'col-resize';
 };
 
 const moveResize = (event: PointerEvent): void => {
@@ -225,6 +494,8 @@ const moveResize = (event: PointerEvent): void => {
         sidebarWidth.value = next;
     } else if (state.target === 'control') {
         controlWidth.value = next;
+    } else if (state.target === 'command') {
+        commandHeight.value = next;
     } else {
         messageHeight.value = next;
     }
@@ -239,6 +510,7 @@ const endResize = (event: PointerEvent): void => {
     writeStoredSize('dsvisualizer.layout.sidebarWidth', sidebarWidth.value);
     writeStoredSize('dsvisualizer.layout.controlWidth', controlWidth.value);
     writeStoredSize('dsvisualizer.layout.messageHeight', messageHeight.value);
+    writeStoredSize('dsvisualizer.layout.commandHeight', commandHeight.value);
     resizeState = null;
     resizingTarget.value = null;
     document.body.style.userSelect = '';
@@ -366,6 +638,7 @@ const handleWindowResize = (): void => {
     sidebarWidth.value = clampSize('sidebar', sidebarWidth.value);
     controlWidth.value = clampSize('control', controlWidth.value);
     messageHeight.value = clampSize('messages', messageHeight.value);
+    commandHeight.value = clampSize('command', commandHeight.value);
     clampCanvasPan();
 };
 
@@ -379,6 +652,8 @@ let lastKmpTemplate = 'abab';
 let bsDataLen = 10;
 let segDataLen = 8;
 let traversalNodeCount = 7;
+// 二叉树遍历当前的自定义边序列（u1,v1,u2,v2,...），null 表示默认示例树
+let traversalEdges: number[] | null = null;
 let graphNodeCnt = 6;
 const UNION_FIND_DEFAULT_SIZE = 10;
 const BIT_DEFAULT_SIZE = 8;
@@ -394,6 +669,10 @@ const graphEdgesByKey = new Map<VisualizerType, number[][]>();
 const isGraphAlgorithm = (key: VisualizerType): boolean =>
     key === VisualizerType.DIJKSTRA || key === VisualizerType.FLOYD ||
     key === VisualizerType.PRIM || key === VisualizerType.KRUSKAL;
+
+const isSortAlgorithm = (key: VisualizerType): boolean =>
+    key === VisualizerType.BUBBLE_SORT || key === VisualizerType.INSERTION_SORT ||
+    key === VisualizerType.MERGE_SORT || key === VisualizerType.QUICK_SORT;
 
 const isDirectedGraph = (key: VisualizerType): boolean =>
     key === VisualizerType.DIJKSTRA || key === VisualizerType.FLOYD;
@@ -441,6 +720,9 @@ const validateNumberList = (raw: string): string | null => {
     return parseNumberList(raw) === null ? '请输入有效数字，使用逗号或空格分隔' : null;
 };
 
+const validateHashKey = (raw: string): string | null =>
+    Number.isInteger(Number(raw)) ? null : '键必须为整数';
+
 const currentListSize = (): number | null => {
     const ds = currentDS;
     if (!ds) return null;
@@ -476,6 +758,15 @@ const validateSegmentRange = (values: Record<string, string>): string | null => 
 const validateTrieWord = (raw: string): string | null => {
     return /^[a-z]+$/.test(raw.trim()) ? null : '请输入仅包含小写字母的字符串';
 };
+
+const validateKmpMain = (raw: string): string | null => {
+    const text = raw.trim();
+    if (text === '') return '主串不能为空';
+    return /\s/.test(text) ? '主串不能包含空白字符' : null;
+};
+
+const validateKmpTemplate = (raw: string): string | null =>
+    /\s/.test(raw.trim()) ? '模式串不能包含空白字符' : null;
 
 const validateUnionFindIndex = (raw: string): string | null => {
     const index = Number(raw);
@@ -589,7 +880,13 @@ const parseGraphEdges = (raw: string, undirected: boolean): GraphParseResult => 
         edges.push([u, v, w]);
     }
 
-    const maxNode = Math.max(...usedNodes);
+    let maxNode = 0;
+    usedNodes.forEach(node => {
+        if (node > maxNode) maxNode = node;
+    });
+    if (maxNode >= 200) {
+        return { edges: [], error: '节点数量超过上限200' };
+    }
     for (let i = 0; i <= maxNode; ++i) {
         if (!usedNodes.has(i)) {
             return { edges: [], error: `节点编号必须从 0 开始连续，缺少节点 ${i}` };
@@ -650,6 +947,12 @@ const targetParam: ControlInputDef = {
     ...numberParam('val', '查找目标'),
     random: () => String(randomInt(1, Math.max(1, bsDataLen))),
 };
+const traversalEdgesParam: ControlInputDef = {
+    key: 'traversalEdges',
+    label: '树边（每两个数 u v，v 是 u 的父节点）',
+    placeholder: '2 1 3 1 4 2 5 2',
+    type: 'textarea',
+};
 const sortParam: ControlInputDef = {
     ...textParam('sortInput', '数组', '如 5,3,8,1,9'),
     random: () => randomNumberList(),
@@ -660,6 +963,7 @@ const kmpStrParam: ControlInputDef = {
 };
 const kmpTemplateParam: ControlInputDef = {
     ...textParam('template', '模式串', '如 abab'),
+    required: false,
     random: () => randomPatternString(2, 4),
 };
 const segLParam: ControlInputDef = {
@@ -824,7 +1128,7 @@ const forceFinishPending = async (): Promise<void> => {
 // 流程控制
 const handlePlay = (): void => {
     if (!opRunning.value) return;
-    stepController.setTimeInterval(PLAY_TIME_INTERVAL);
+    stepController.setTimeInterval(playInterval.value);
     stepController.setStatus(StepStatus.PLAYING);
 };
 const handleFast = (): void => {
@@ -838,9 +1142,36 @@ const handlePause = (): void => {
 };
 const handleStep = (): void => {
     if (!opRunning.value) return;
-    // 单步执行使用正常动画速度，并等待动画屏障
-    stepController.setTimeInterval(PLAY_TIME_INTERVAL);
+    // 单步执行使用播放间隔设置，但当前动作立即放行
+    stepController.setTimeInterval(playInterval.value);
     stepController.setStatus(StepStatus.STEP_EXECUTION);
+};
+
+const handleGlobalKeydown = (event: KeyboardEvent): void => {
+    if (event.repeat || event.isComposing || event.defaultPrevented || !opRunning.value) return;
+    const target = event.target;
+    if (target instanceof HTMLElement &&
+        target.closest('input, textarea, select, button, [contenteditable="true"], [role="button"], [role="separator"]')) {
+        return;
+    }
+    if (settingsOpen.value || pageInfoOpen.value ||
+        document.querySelector('.dialog-overlay, .command-help-overlay') !== null) {
+        return;
+    }
+
+    const shortcut = shortcutFromEvent(event);
+    if (shortcut === null) return;
+    if (shortcut === shortcuts.value.step) {
+        event.preventDefault();
+        handleStep();
+    } else if (shortcut === shortcuts.value.playPause) {
+        event.preventDefault();
+        if (stepController.isPlaying()) handlePause();
+        else handlePlay();
+    } else if (shortcut === shortcuts.value.fast) {
+        event.preventDefault();
+        handleFast();
+    }
 };
 
 /************************************************** */
@@ -939,6 +1270,27 @@ const menuTree: MenuNode[] = [
 // 菜单标题（单一来源：可视化注册表）
 const menuTitle = (key: VisualizerType): string => getStructureTitle(key);
 
+const currentPageInfo = computed(() => structureInfo[currentMenu.value]);
+const hasPageInfo = computed(() =>
+    currentPageInfo.value.info.trim() !== '' || currentPageInfo.value.notes.trim() !== '');
+
+const openPageInfo = (): void => {
+    if (!hasPageInfo.value) return;
+    pageInfoBackdropPressed.value = false;
+    pageInfoOpen.value = true;
+};
+
+const onPageInfoPointerDown = (event: PointerEvent): void => {
+    pageInfoBackdropPressed.value = event.target === event.currentTarget;
+};
+
+const onPageInfoClick = (event: MouseEvent): void => {
+    if (pageInfoBackdropPressed.value && event.target === event.currentTarget) {
+        pageInfoOpen.value = false;
+    }
+    pageInfoBackdropPressed.value = false;
+};
+
 /************************************************** */
 // 数据创建（实例来自注册表，这里只维护页面级规模状态）
 const createDS = (key: VisualizerType): void => {
@@ -960,6 +1312,7 @@ const createDS = (key: VisualizerType): void => {
             break;
         case VisualizerType.BINARY_TREE_TRAVERSAL:
             traversalNodeCount = 7;
+            traversalEdges = null;
             break;
         case VisualizerType.UNION_FIND:
             unionFindSize = UNION_FIND_DEFAULT_SIZE;
@@ -1042,11 +1395,13 @@ const updateStats = (): void => {
 /************************************************** */
 // 菜单切换（原设计：强制播完再切换�?
 const selectMenu = async (key: VisualizerType): Promise<void> => {
+    if (key === currentMenu.value && currentDS !== null) return;
     await forceFinishPending();
     currentMenu.value = key;
     currentOp.value = '';
     currentResult.value = null;
     clearMessages();
+    clearCommandLines();
     DataNode.restart();
     visualizerManager.switchVisualizer(key);
     resetCanvasView();
@@ -1067,6 +1422,48 @@ const isLinkedListDS = computed(() =>
     currentMenu.value === VisualizerType.SINGLY_LINKED_LIST ||
     currentMenu.value === VisualizerType.CIRCULAR_LINKED_LIST ||
     currentMenu.value === VisualizerType.DOUBLE_LINKED_LIST);
+const isLinearListDS = computed(() =>
+    currentMenu.value === VisualizerType.ARRAY_LIST || isLinkedListDS.value);
+const isStackDS = computed(() =>
+    currentMenu.value === VisualizerType.ARRAY_STACK ||
+    currentMenu.value === VisualizerType.LINKED_STACK);
+const isQueueDS = computed(() =>
+    currentMenu.value === VisualizerType.ARRAY_QUEUE ||
+    currentMenu.value === VisualizerType.LINKED_QUEUE);
+const isDequeDS = computed(() =>
+    currentMenu.value === VisualizerType.ARRAY_DEQUE ||
+    currentMenu.value === VisualizerType.LINKED_DEQUE);
+const isBinaryHeapDS = computed(() => currentMenu.value === VisualizerType.BINARY_HEAP);
+const isHashDS = computed(() => currentMenu.value === VisualizerType.HASH_TABLE);
+const isSegmentTreeDS = computed(() => currentMenu.value === VisualizerType.SEGMENT_TREE);
+const isTrieDS = computed(() => currentMenu.value === VisualizerType.TRIE);
+const isUnionFindDS = computed(() => currentMenu.value === VisualizerType.UNION_FIND);
+const isBitDS = computed(() => currentMenu.value === VisualizerType.BINARY_INDEXED_TREE);
+const isLinearListInstance = (ds: DSInstance | null): ds is LinearList =>
+    ds instanceof ArrayList || ds instanceof SinglyLinkedList ||
+    ds instanceof CircularLinkedList || ds instanceof DoubleLinkedList;
+const isStackInstance = (ds: DSInstance | null): ds is ArrayStack | LinkedStack =>
+    ds instanceof ArrayStack || ds instanceof LinkedStack;
+const isQueueInstance = (ds: DSInstance | null): ds is ArrayQueue | LinkedQueue =>
+    ds instanceof ArrayQueue || ds instanceof LinkedQueue;
+const isDequeInstance = (ds: DSInstance | null): ds is ArrayDeque | LinkedDeque =>
+    ds instanceof ArrayDeque || ds instanceof LinkedDeque;
+const isBinaryHeapInstance = (ds: DSInstance | null): ds is BinaryHeap =>
+    ds instanceof BinaryHeap;
+const isHashTableInstance = (ds: DSInstance | null): ds is HashTable =>
+    ds instanceof HashTable;
+const isSegmentTreeInstance = (ds: DSInstance | null): ds is SegmentTree =>
+    ds instanceof SegmentTree;
+const isTrieInstance = (ds: DSInstance | null): ds is Trie =>
+    ds instanceof Trie;
+const isUnionFindInstance = (ds: DSInstance | null): ds is UnionFindSet =>
+    ds instanceof UnionFindSet;
+const isBitInstance = (ds: DSInstance | null): ds is BinaryIndexedTree =>
+    ds instanceof BinaryIndexedTree;
+type BSTFamily = BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree;
+const isBSTFamilyInstance = (ds: DSInstance | null): ds is BSTFamily =>
+    ds instanceof BinarySearchTree || ds instanceof AVLTree ||
+    ds instanceof RedBlackTree || ds instanceof TreapTree || ds instanceof ScapegoatTree;
 
 /************************************************** */
 // 数据操作（统一模板：runOp 串行�?+ 快进排队�?
@@ -1077,50 +1474,17 @@ const handleInsert = (v: Record<string, string>): void => {
     const insertIdx = Number(v.idx ?? 0);
 
     if (isTreeDS.value) {
-        runOp(async () => {
-            currentOp.value = OP.INSERT;
-            const no = treeInsertCounter++;
-            addMessage(`将节点 ${insertVal}（第${no}个）加入${menuTitle(currentMenu.value)}`, MessageType.INFO);
-            try {
-                await (ds as BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree).insert(insertVal);
-            } catch (error) {
-                addOperationError('插入操作', error);
-            }
-            updateStats();
-            stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-        });
+        handleCommand(`insert ${insertVal}`);
         return;
     }
     if (isLinkedListDS.value) {
-        runOp(async () => {
-            currentOp.value = OP.INSERT;
-            const list = ds as SinglyLinkedList | CircularLinkedList | DoubleLinkedList;
-            // 索引留空时等价于尾插（插入到下标size处）
-            const idx = parseIndex(v.idx, list.size());
-            addMessage(`在索引 ${idx} 处插入节点 ${insertVal}`, MessageType.INFO);
-            setListInsertHint(idx);
-            try {
-                await list.insert(idx, insertVal);
-            } catch (error) {
-                addOperationError('插入操作', error);
-            }
-            updateStats();
-            stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-        });
+        const list = ds as SinglyLinkedList | CircularLinkedList | DoubleLinkedList;
+        const rawIdx = (v.idx ?? '').trim();
+        const idx = parseIndex(v.idx, list.size());
+        handleCommand(rawIdx === '' ? `insert ${insertVal}` : `insert ${idx} ${insertVal}`);
         return;
     }
-    // 顺序表：按索引插�?
-    runOp(async () => {
-        currentOp.value = OP.INSERT;
-        addMessage(`在索引 ${insertIdx} 处插入元素 ${insertVal}`, MessageType.INFO);
-        try {
-            await (ds as ArrayList).insert(insertIdx, insertVal);
-        } catch (error) {
-            addOperationError('插入操作', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`insert ${insertIdx} ${insertVal}`);
 };
 
 const handleDelete = (v: Record<string, string>): void => {
@@ -1130,37 +1494,15 @@ const handleDelete = (v: Record<string, string>): void => {
     const delIdx = Number(v.idx ?? 0);
 
     if (isTreeDS.value) {
-        runOp(async () => {
-            currentOp.value = OP.DELETE;
-            addMessage(`从${menuTitle(currentMenu.value)}中删除节点 ${delVal}`, MessageType.INFO);
-            try {
-                await (ds as BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree).delete(delVal);
-            } catch (error) {
-                addOperationError('删除操作', error);
-            }
-            updateStats();
-            stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-        });
+        handleCommand(`delete ${delVal}`);
         return;
     }
-    runOp(async () => {
-        currentOp.value = OP.DELETE;
-        try {
-            if (isLinkedListDS.value) {
-                const list = ds as SinglyLinkedList | CircularLinkedList | DoubleLinkedList;
-                const idx = parseIndex(v.idx, 0);
-                addMessage(`删除索引 ${idx} 处的元素`, MessageType.INFO);
-                await list.delete(idx);
-            } else {
-                addMessage(`删除索引 ${delIdx} 处的元素`, MessageType.INFO);
-                await (ds as ArrayList).delete(delIdx);
-            }
-        } catch (error) {
-            addOperationError('删除操作', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (isLinkedListDS.value) {
+        const idx = parseIndex(v.idx, 0);
+        handleCommand(`erase ${idx}`);
+        return;
+    }
+    handleCommand(`erase ${delIdx}`);
 };
 
 const handleGet = (v: Record<string, string>): void => {
@@ -1171,68 +1513,21 @@ const handleGet = (v: Record<string, string>): void => {
 
     // 二分查找
     if (currentMenu.value === VisualizerType.BINARY_SEARCH) {
-        runOp(async () => {
-            currentOp.value = OP.SEARCH;
-            bsVars.value.target = getVal;
-            addMessage(`开始二分查找 target=${getVal}`, MessageType.INFO);
-            try {
-                const result = await (ds as BinarySearch).find(getVal);
-                currentResult.value = String(result);
-            } catch (error) {
-                addOperationError('二分查找', error);
-            }
-            stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-        });
+        handleCommand(`find ${getVal}`);
         return;
     }
     // 树：查找节点是否存在
     if (isTreeDS.value) {
-        runOp(async () => {
-            currentOp.value = OP.SEARCH;
-            addMessage(`在${menuTitle(currentMenu.value)}中查找节点 ${getVal}`, MessageType.INFO);
-            try {
-                const ok = await (ds as BinarySearchTree | AVLTree | RedBlackTree | TreapTree | ScapegoatTree).contains(getVal);
-                currentResult.value = String(ok);
-            } catch (error) {
-                addOperationError('查找操作', error);
-            }
-            stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-        });
+        handleCommand(`contains ${getVal}`);
         return;
     }
     // 链表：按下标取值（并高亮该节点�?
     if (isLinkedListDS.value) {
-        runOp(async () => {
-            currentOp.value = OP.SEARCH;
-            const list = ds as SinglyLinkedList | CircularLinkedList | DoubleLinkedList;
-            const idx = parseIndex(v.idx, 0);
-            addMessage(`查找索引 ${idx} 处的元素`, MessageType.INFO);
-            try {
-                const val = await list.get(idx);
-                currentResult.value = val === null ? 'null' : String(val);
-                highlightListIndex(idx);
-                if (val === null) {
-                    addMessage(`索引 ${idx} 处不存在元素`, MessageType.WARNING);
-                }
-            } catch (error) {
-                addOperationError('查找操作', error);
-            }
-            stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-        });
+        const idx = parseIndex(v.idx, 0);
+        handleCommand(`at ${idx}`);
         return;
     }
-    // 顺序表：按索引取�?
-    runOp(async () => {
-        currentOp.value = OP.SEARCH;
-        addMessage(`查询索引 ${getIdx} 处的元素`, MessageType.INFO);
-        try {
-            const val = await (ds as ArrayList).get(getIdx);
-            currentResult.value = val === null || val === undefined ? 'null' : String(val);
-        } catch (error) {
-            addOperationError('查找操作', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`at ${getIdx}`);
 };
 
 const handleSet = (v: Record<string, string>): void => {
@@ -1243,373 +1538,1863 @@ const handleSet = (v: Record<string, string>): void => {
 
     // 链表：按下标修改（并高亮该节点）
     if (isLinkedListDS.value) {
-        runOp(async () => {
-            currentOp.value = OP.UPDATE;
-            const list = ds as SinglyLinkedList | CircularLinkedList | DoubleLinkedList;
-            const idx = parseIndex(v.idx, 0);
-            addMessage(`将索引 ${idx} 处的元素修改为 ${setVal}`, MessageType.INFO);
-            try {
-                await list.set(idx, setVal);
-                highlightListIndex(idx);
-            } catch (error) {
-                addOperationError('修改操作', error);
-            }
-            stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-        });
+        const idx = parseIndex(v.idx, 0);
+        handleCommand(`update ${idx} ${setVal}`);
         return;
     }
-
-    runOp(async () => {
-        currentOp.value = OP.UPDATE;
-        addMessage(`将索引 ${setIdx} 处的元素修改为 ${setVal}`, MessageType.INFO);
-        try {
-            await (ds as ArrayList).set(setIdx, setVal);
-        } catch (error) {
-            addOperationError('修改操作', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`update ${setIdx} ${setVal}`);
 };
 
 /************************************************** */
-// �?/ 队列 / 双端队列
+// 命令行
+const commandNotes = [
+    'Enter 执行，Shift+Enter 换行。',
+    '可以一次粘贴多行命令，将按从上到下的顺序逐条执行。',
+    '批次执行期间：点击快进会快速执行完整个批次；点击播放会持续播放到批次结束。',
+    '操作台按钮执行的操作也会写入命令历史。',
+];
+
+const commandHelp = computed<CommandHelp>(() => {
+    if (isLinearListDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令（索引从 0 开始）',
+            commands: [
+                { command: 'insert <值>', description: '在末尾插入' },
+                { command: 'insert <索引> <值>', description: '在指定索引插入' },
+                { command: 'at <索引>', description: '查询索引处的值' },
+                { command: 'update <索引> <值>', description: '修改指定索引的值' },
+                { command: 'erase <索引>', description: '删除指定索引的元素' },
+                { command: 'clear', description: '清空线性表' },
+            ],
+            notes: commandNotes,
+        };
+    }
+    if (isStackDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'push <值>', description: '入栈' },
+                { command: 'pop', description: '出栈' },
+                { command: 'top', description: '查看栈顶' },
+                { command: 'clear', description: '清空栈' },
+            ],
+            notes: commandNotes,
+        };
+    }
+    if (isQueueDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'push <值>', description: '入队' },
+                { command: 'pop', description: '出队' },
+                { command: 'top', description: '查看队首' },
+                { command: 'clear', description: '清空队列' },
+            ],
+            notes: commandNotes,
+        };
+    }
+    if (isDequeDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'pushFront <值>', description: '头部入队' },
+                { command: 'pushBack <值>', description: '尾部入队' },
+                { command: 'popFront', description: '头部出队' },
+                { command: 'popBack', description: '尾部出队' },
+                { command: 'getFront', description: '取队首' },
+                { command: 'getBack', description: '取队尾' },
+                { command: 'clear', description: '清空队列' },
+            ],
+            notes: commandNotes,
+        };
+    }
+    if (isTreeDS.value) {
+        const commands: CommandHelp['commands'] = [
+            { command: 'insert <值>', description: '插入节点' },
+            { command: 'delete <值>', description: '删除节点' },
+            { command: 'contains <值>', description: '查找值是否存在' },
+            { command: 'size', description: '查询节点数量' },
+            { command: 'isEmpty', description: '判断树是否为空' },
+            { command: 'clear', description: '清空树' },
+        ];
+        if (currentMenu.value === VisualizerType.SCAPEGOAT) {
+            commands.push(
+                { command: 'small <值>', description: '统计小于该值的节点数' },
+                { command: 'rank <值>', description: '查询值的排名（从 1 开始）' },
+                { command: 'index <k>', description: '查询第 k 小的值（从 1 开始）' },
+                { command: 'predecessor <值>', description: '查询前驱' },
+                { command: 'successor <值>', description: '查询后继' },
+            );
+        }
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands,
+            notes: commandNotes,
+        };
+    }
+    if (isBinaryHeapDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'push <值>', description: '插入元素' },
+                { command: 'pop', description: '弹出堆顶' },
+                { command: 'top', description: '查看堆顶' },
+                { command: 'size', description: '查询元素个数' },
+                { command: 'isEmpty', description: '判断堆是否为空' },
+                { command: 'clear', description: '清空堆' },
+            ],
+            notes: commandNotes,
+        };
+    }
+    if (isHashDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'add <键>', description: '插入整数键' },
+                { command: 'contains <键>', description: '查找键是否存在' },
+                { command: 'remove <键>', description: '删除键' },
+                { command: 'size', description: '查询键数量' },
+                { command: 'isEmpty', description: '判断哈希表是否为空' },
+                { command: 'clear', description: '清空哈希表' },
+            ],
+            notes: commandNotes,
+        };
+    }
+    if (isSegmentTreeDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'add <l> <r> <增量>', description: '区间加' },
+                { command: 'query <l> <r>', description: '区间求和' },
+                { command: 'getSize', description: '查询元素个数' },
+                { command: 'init <v1> <v2> ...', description: '用数组重建线段树' },
+                { command: 'reset', description: '恢复默认数组' },
+            ],
+            notes: [...commandNotes, '下标从 0 开始，区间为双闭区间。', 'init/reset 为页面层重建命令。'],
+        };
+    }
+    if (isTrieDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'insert <单词>', description: '插入字符串' },
+                { command: 'find <单词>', description: '查询字符串出现次数' },
+                { command: 'prefix <前缀>', description: '查询前缀数量' },
+                { command: 'delete <单词>', description: '删除字符串' },
+                { command: 'size', description: '查询字符串总数' },
+                { command: 'isEmpty', description: '判断 Trie 是否为空' },
+                { command: 'clear', description: '清空 Trie' },
+            ],
+            notes: [...commandNotes, '单词仅允许小写字母 a-z。'],
+        };
+    }
+    if (isUnionFindDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'union <u> <v>', description: '合并集合' },
+                { command: 'find <x>', description: '查找根节点' },
+                { command: 'getSize <x>', description: '查询集合大小' },
+                { command: 'inSameSet <u> <v>', description: '判断是否同集合' },
+                { command: 'init <n>', description: '初始化 n 个独立元素' },
+                { command: 'reset', description: '恢复默认规模' },
+            ],
+            notes: [...commandNotes, '节点编号从 0 开始。', 'init/reset 为页面层重建命令。'],
+        };
+    }
+    if (isBitDS.value) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'add <idx> <增量>', description: '单点加' },
+                { command: 'query <l> <r>', description: '区间求和' },
+                { command: 'init <n> [初始值]', description: '初始化树状数组' },
+                { command: 'reset', description: '恢复默认规模' },
+            ],
+            notes: [...commandNotes, '下标从 1 开始，区间为双闭区间。', 'init/reset 为页面层重建命令。'],
+        };
+    }
+    if (currentMenu.value === VisualizerType.BINARY_SEARCH) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'find <目标值>', description: '执行二分查找' },
+                { command: 'setData <值1> <值2> ...', description: '设置数组（自动升序）' },
+            ],
+            notes: [...commandNotes, '查找使用升序数组。'],
+        };
+    }
+    if (currentMenu.value === VisualizerType.BINARY_TREE_TRAVERSAL) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'preOrderTraversal', description: '前序遍历' },
+                { command: 'inOrderTraversal', description: '中序遍历' },
+                { command: 'postOrderTraversal', description: '后序遍历' },
+                { command: 'setData <u1> <v1> <u2> <v2> ...', description: '设置树边' },
+                { command: 'reset', description: '重新开始当前树' },
+            ],
+            notes: [...commandNotes, '每两个数 u v 表示 v 是 u 的父节点；第一个孩子为左孩子，第二个为右孩子。'],
+        };
+    }
+    if (isGraphAlgorithm(currentMenu.value)) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                {
+                    command: currentMenu.value === VisualizerType.DIJKSTRA
+                        ? 'execute [起点]'
+                        : 'execute',
+                    description: '执行算法',
+                },
+                { command: 'setData <u1> <v1> <w1> ...', description: '设置图（起点 终点 权值）' },
+                { command: 'reset', description: '重新开始' },
+            ],
+            notes: [...commandNotes, '节点从 0 开始连续编号；setData/reset 为页面层操作。'],
+        };
+    }
+    if (isSortAlgorithm(currentMenu.value)) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'setData <值1> <值2> ...', description: '设置排序数组' },
+                { command: 'sort', description: '开始排序' },
+                { command: 'reset', description: '重新开始' },
+            ],
+            notes: commandNotes,
+        };
+    }
+    if (currentMenu.value === VisualizerType.KMP) {
+        return {
+            title: menuTitle(currentMenu.value) + '命令',
+            commands: [
+                { command: 'setData <主串> [模式串]', description: '设置主串和模式串' },
+                { command: 'search', description: '执行 KMP 匹配' },
+                { command: 'getNext', description: '计算 next 数组' },
+                { command: 'reset', description: '恢复默认字符串' },
+            ],
+            notes: commandNotes,
+        };
+    }
+    return {
+        title: '命令行',
+        commands: [],
+        notes: ['当前数据结构暂未实现命令行命令。'],
+    };
+});
+
+const pushCommandLine = (text: string, type: CommandLine['type']): CommandLine => {
+    const line: CommandLine = { text, type };
+    commandLines.value.push(line);
+    if (commandLines.value.length > 200) {
+        commandLines.value.splice(0, commandLines.value.length - 200);
+    }
+    return line;
+};
+
+const removeCommandLine = (line: CommandLine): void => {
+    const index = commandLines.value.indexOf(line);
+    if (index >= 0) {
+        commandLines.value.splice(index, 1);
+    }
+};
+
+const clearCommandLines = (): void => {
+    commandLines.value = [];
+};
+
+
+interface CommandBatchItem {
+    opName: string;
+    action: () => Promise<unknown>;
+    output?: (value: unknown) => string;
+    highlight?: number;
+}
+
+/**
+ * 解析一批顺序表命令。
+ * 只在这里检查参数数量和格式；下标范围在真正执行时检查，
+ * 因此前面的命令改变表长后，后面的命令仍能按最新状态校验。
+ */
+const parseListBatch = (commands: string[], list: LinearList): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const linked = !(list instanceof ArrayList);
+    const prepareInsert = (index: number): void => {
+        if (linked) {
+            setListInsertHint(index);
+        }
+    };
+    const integer = (value: string): number | null => {
+        const number = Number(value);
+        return Number.isInteger(number) ? number : null;
+    };
+    const numberValue = (value: string): number | null => {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+
+        if (command === 'clear') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：clear' };
+            }
+            items.push({
+                opName: OP.CLEAR,
+                action: async () => list.clear(),
+            });
+            continue;
+        }
+
+        if (command === 'insert') {
+            if (parts.length === 1) {
+                const value = numberValue(parts[0]);
+                if (value === null) {
+                    return { items: [], error: '用法：insert <索引> <值> 或 insert <值>' };
+                }
+                items.push({
+                    opName: OP.INSERT,
+                    action: () => {
+                        const index = list.size();
+                        prepareInsert(index);
+                        return list.insert(index, value);
+                    },
+                });
+                continue;
+            }
+            if (parts.length !== 2) {
+                return { items: [], error: '用法：insert <索引> <值> 或 insert <值>' };
+            }
+            const index = integer(parts[0]);
+            const value = numberValue(parts[1]);
+            if (index === null || value === null) {
+                return { items: [], error: '用法：insert <索引> <值> 或 insert <值>' };
+            }
+            items.push({
+                opName: OP.INSERT,
+                action: () => {
+                    if (index < 0 || index > list.size()) {
+                        throw new Error(`插入索引需在 0 到 ${list.size()} 之间`);
+                    }
+                    prepareInsert(index);
+                    return list.insert(index, value);
+                },
+            });
+            continue;
+        }
+
+        if (command === 'at') {
+            if (parts.length !== 1) {
+                return { items: [], error: '用法：at <索引>' };
+            }
+            const index = integer(parts[0]);
+            if (index === null) {
+                return { items: [], error: '用法：at <索引>' };
+            }
+            items.push({
+                opName: OP.SEARCH,
+                highlight: index,
+                action: () => {
+                    if (index < 0 || index >= list.size()) {
+                        throw new Error(`查找索引需在 0 到 ${list.size() - 1} 之间`);
+                    }
+                    return list.at(index);
+                },
+                output: (value) => {
+                    currentResult.value = value === null ? 'null' : String(value);
+                    return `索引 ${index} 的值为 ${value === null ? 'null' : String(value)}`;
+                },
+            });
+            continue;
+        }
+
+        if (command === 'update') {
+            if (parts.length !== 2) {
+                return { items: [], error: '用法：update <索引> <值>' };
+            }
+            const index = integer(parts[0]);
+            const value = numberValue(parts[1]);
+            if (index === null || value === null) {
+                return { items: [], error: '用法：update <索引> <值>' };
+            }
+            items.push({
+                opName: OP.UPDATE,
+                highlight: index,
+                action: () => {
+                    if (index < 0 || index >= list.size()) {
+                        throw new Error(`修改索引需在 0 到 ${list.size() - 1} 之间`);
+                    }
+                    return list.update(index, value);
+                },
+            });
+            continue;
+        }
+
+        if (command === 'erase') {
+            if (parts.length !== 1) {
+                return { items: [], error: '用法：erase <索引>' };
+            }
+            const index = integer(parts[0]);
+            if (index === null) {
+                return { items: [], error: '用法：erase <索引>' };
+            }
+            items.push({
+                opName: OP.DELETE,
+                action: () => {
+                    if (index < 0 || index >= list.size()) {
+                        throw new Error(`删除索引需在 0 到 ${list.size() - 1} 之间`);
+                    }
+                    return list.erase(index);
+                },
+            });
+            continue;
+        }
+
+        return { items: [], error: '未知命令：' + command };
+    }
+
+    return { items, error: null };
+};
+
+const parseStackBatch = (commands: string[], stack: ArrayStack | LinkedStack): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const numberValue = (value: string): number | null => {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'push') {
+            if (parts.length !== 1) {
+                return { items: [], error: '用法：push <值>' };
+            }
+            const value = numberValue(parts[0]);
+            if (value === null) {
+                return { items: [], error: 'push 的值必须为数字' };
+            }
+            items.push({
+                opName: OP.STACK_PUSH,
+                action: () => {
+                    setListInsertHint(0);
+                    return stack.push(value);
+                },
+            });
+            continue;
+        }
+        if (command === 'pop') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：pop' };
+            }
+            items.push({ opName: OP.STACK_POP, action: () => stack.pop() });
+            continue;
+        }
+        if (command === 'top') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：top' };
+            }
+            items.push({
+                opName: OP.STACK_TOP,
+                action: () => stack.top(),
+                output: value => {
+                    currentResult.value = value === null ? 'null' : String(value);
+                    return `栈顶：${value === null ? 'null' : String(value)}`;
+                },
+            });
+            continue;
+        }
+        if (command === 'clear') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：clear' };
+            }
+            items.push({ opName: OP.CLEAR, action: async () => stack.clear() });
+            continue;
+        }
+        return { items: [], error: '未知命令：' + command };
+    }
+    return { items, error: null };
+};
+
+const parseQueueBatch = (commands: string[], queue: ArrayQueue | LinkedQueue): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const numberValue = (value: string): number | null => {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'push') {
+            if (parts.length !== 1) {
+                return { items: [], error: '用法：push <值>' };
+            }
+            const value = numberValue(parts[0]);
+            if (value === null) {
+                return { items: [], error: 'push 的值必须为数字' };
+            }
+            items.push({
+                opName: OP.QUEUE_PUSH,
+                action: () => {
+                    setListInsertHint(queue.size());
+                    return queue.push(value);
+                },
+            });
+            continue;
+        }
+        if (command === 'pop') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：pop' };
+            }
+            items.push({ opName: OP.QUEUE_POP, action: () => queue.pop() });
+            continue;
+        }
+        if (command === 'top') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：top' };
+            }
+            items.push({
+                opName: OP.QUEUE_FRONT,
+                action: () => queue.top(),
+                output: value => {
+                    currentResult.value = value === null ? 'null' : String(value);
+                    return `队首：${value === null ? 'null' : String(value)}`;
+                },
+            });
+            continue;
+        }
+        if (command === 'clear') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：clear' };
+            }
+            items.push({ opName: OP.CLEAR, action: async () => queue.clear() });
+            continue;
+        }
+        return { items: [], error: '未知命令：' + command };
+    }
+    return { items, error: null };
+};
+
+const parseDequeBatch = (commands: string[], deque: ArrayDeque | LinkedDeque): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const numberValue = (value: string): number | null => {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        const value = parts.length === 1 ? numberValue(parts[0]) : null;
+
+        if (command === 'pushfront' || command === 'pushback') {
+            if (parts.length !== 1 || value === null) {
+                return { items: [], error: '用法：' + command + ' <值>' };
+            }
+            items.push({
+                opName: command === 'pushfront' ? OP.DEQUE_FRONT : OP.DEQUE_BACK,
+                action: () => {
+                    setListInsertHint(command === 'pushfront' ? 0 : deque.size());
+                    return command === 'pushfront' ? deque.pushFront(value) : deque.pushBack(value);
+                },
+            });
+            continue;
+        }
+        if (command === 'popfront' || command === 'popback') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：' + command };
+            }
+            items.push({
+                opName: command === 'popfront' ? OP.DEQUE_POP_FRONT : OP.DEQUE_POP_BACK,
+                action: () => command === 'popfront' ? deque.popFront() : deque.popBack(),
+            });
+            continue;
+        }
+        if (command === 'getfront' || command === 'getback') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：' + command };
+            }
+            items.push({
+                opName: command === 'getfront' ? OP.DEQUE_GET_FRONT : OP.DEQUE_GET_BACK,
+                action: () => command === 'getfront' ? deque.getFront() : deque.getBack(),
+                output: result => {
+                    currentResult.value = result === null ? 'null' : String(result);
+                    return (command === 'getfront' ? '队首：' : '队尾：') +
+                        (result === null ? 'null' : String(result));
+                },
+            });
+            continue;
+        }
+        if (command === 'clear') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：clear' };
+            }
+            items.push({ opName: OP.CLEAR, action: async () => deque.clear() });
+            continue;
+        }
+        return { items: [], error: '未知命令：' + command };
+    }
+    return { items, error: null };
+};
+
+const parseBSTBatch = (commands: string[], tree: BSTFamily): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const numberValue = (text: string): number | null => {
+        const number = Number(text);
+        return Number.isFinite(number) ? number : null;
+    };
+    const resultText = (value: unknown): string => value === null ? 'null' : String(value);
+    const scapegoat = tree instanceof ScapegoatTree ? tree : null;
+    const pushQuery = (
+        opName: string,
+        label: string,
+        action: () => Promise<unknown>,
+    ): void => {
+        items.push({
+            opName,
+            action,
+            output: value => {
+                const text = resultText(value);
+                currentResult.value = text;
+                return `${label}：${text}`;
+            },
+        });
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+
+        if (command === 'insert' || command === 'delete' || command === 'contains') {
+            if (parts.length !== 1) {
+                return { items: [], error: `用法：${command} <值>` };
+            }
+            const value = numberValue(parts[0]);
+            if (value === null) {
+                return { items: [], error: `${command} 的参数必须为数字` };
+            }
+            if (command === 'insert') {
+                items.push({
+                    opName: OP.INSERT,
+                    action: async () => {
+                        const no = treeInsertCounter++;
+                        addMessage(`将节点 ${value}（第${no}个）加入${menuTitle(currentMenu.value)}`, MessageType.INFO);
+                        await tree.insert(value);
+                    },
+                });
+            } else if (command === 'delete') {
+                items.push({
+                    opName: OP.DELETE,
+                    action: () => tree.delete(value),
+                });
+            } else {
+                pushQuery(OP.SEARCH, `contains ${value}`, () => tree.contains(value));
+            }
+            continue;
+        }
+
+        if (command === 'clear') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：clear' };
+            }
+            items.push({ opName: OP.CLEAR, action: async () => tree.clear() });
+            continue;
+        }
+
+        if (command === 'size') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：size' };
+            }
+            pushQuery('查询大小', 'size', async () => tree.size());
+            continue;
+        }
+
+        if (command === 'isempty') {
+            if (parts.length !== 0) {
+                return { items: [], error: '用法：isEmpty' };
+            }
+            pushQuery('判断为空', 'isEmpty', async () => tree.isEmpty());
+            continue;
+        }
+
+        if (command === 'small' || command === 'rank' || command === 'index' ||
+            command === 'predecessor' || command === 'successor') {
+            if (scapegoat === null) {
+                return { items: [], error: `当前结构不支持 ${command} 命令` };
+            }
+            const argumentName = command === 'index' ? 'k' : '值';
+            if (parts.length !== 1) {
+                return { items: [], error: `用法：${command} <${argumentName}>` };
+            }
+            const value = numberValue(parts[0]);
+            if (value === null || (command === 'index' && !Number.isInteger(value))) {
+                return { items: [], error: `${command} 的参数必须为${command === 'index' ? '整数' : '数字'}` };
+            }
+            if (command === 'small') {
+                pushQuery('统计更小值', `small ${value}`, () => scapegoat.small(value));
+            } else if (command === 'rank') {
+                pushQuery('查询排名', `rank ${value}`, () => scapegoat.rank(value));
+            } else if (command === 'index') {
+                pushQuery('按排名查询', `index ${value}`, () => scapegoat.index(value));
+            } else if (command === 'predecessor') {
+                pushQuery('查询前驱', `predecessor ${value}`, () => scapegoat.predecessor(value));
+            } else {
+                pushQuery('查询后继', `successor ${value}`, () => scapegoat.successor(value));
+            }
+            continue;
+        }
+
+        return { items: [], error: `未知命令：${command}` };
+    }
+
+    return { items, error: null };
+};
+
+const makeQueryItem = (
+    opName: string,
+    label: string,
+    action: () => Promise<unknown>,
+): CommandBatchItem => ({
+    opName,
+    action,
+    output: value => {
+        const text = value === null ? 'null' : String(value);
+        currentResult.value = text;
+        return `${label}：${text}`;
+    },
+});
+
+const rebuildSegmentTree = (data: number[]): void => {
+    segDataLen = data.length;
+    DataNode.restart();
+    visualizerManager.switchVisualizer(VisualizerType.SEGMENT_TREE);
+    resetCanvasView();
+    currentDS = create(SegmentTree, data);
+    updateStats();
+    addMessage(`已用 [${data.join(', ')}] 重建线段树`, MessageType.SUCCESS);
+};
+
+const rebuildUnionFind = (n: number): void => {
+    unionFindSize = n;
+    DataNode.restart();
+    visualizerManager.switchVisualizer(VisualizerType.UNION_FIND);
+    resetCanvasView();
+    currentDS = create(UnionFindSet, n);
+    updateStats();
+    addMessage(`已初始化 ${n} 个独立元素`, MessageType.SUCCESS);
+};
+
+const rebuildBit = (n: number, initialValue = 1): void => {
+    bitSize = n;
+    DataNode.restart();
+    visualizerManager.switchVisualizer(VisualizerType.BINARY_INDEXED_TREE);
+    resetCanvasView();
+    currentDS = create(BinaryIndexedTree, n, initialValue);
+    updateStats();
+    addMessage(`已初始化长度为 ${n} 的树状数组`, MessageType.SUCCESS);
+};
+
+const requireSegmentTree = (): SegmentTree => {
+    if (!(currentDS instanceof SegmentTree)) throw new Error('线段树实例不可用');
+    return currentDS;
+};
+
+const requireUnionFind = (): UnionFindSet => {
+    if (!(currentDS instanceof UnionFindSet)) throw new Error('并查集实例不可用');
+    return currentDS;
+};
+
+const requireBit = (): BinaryIndexedTree => {
+    if (!(currentDS instanceof BinaryIndexedTree)) throw new Error('树状数组实例不可用');
+    return currentDS;
+};
+
+const parseHeapBatch = (commands: string[], heap: BinaryHeap): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const numberValue = (text: string): number | null => {
+        const number = Number(text);
+        return Number.isFinite(number) ? number : null;
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'push') {
+            if (parts.length !== 1) return { items: [], error: '用法：push <值>' };
+            const value = numberValue(parts[0]);
+            if (value === null) return { items: [], error: 'push 的值必须为数字' };
+            items.push({ opName: OP.HEAP_PUSH, action: () => heap.push(value) });
+            continue;
+        }
+        if (command === 'pop') {
+            if (parts.length !== 0) return { items: [], error: '用法：pop' };
+            items.push({ opName: OP.HEAP_POP, action: () => heap.pop() });
+            continue;
+        }
+        if (command === 'top') {
+            if (parts.length !== 0) return { items: [], error: '用法：top' };
+            items.push(makeQueryItem(OP.HEAP_TOP, 'top', () => heap.top()));
+            continue;
+        }
+        if (command === 'size') {
+            if (parts.length !== 0) return { items: [], error: '用法：size' };
+            items.push(makeQueryItem('查询大小', 'size', async () => heap.size()));
+            continue;
+        }
+        if (command === 'isempty') {
+            if (parts.length !== 0) return { items: [], error: '用法：isEmpty' };
+            items.push(makeQueryItem('判断为空', 'isEmpty', async () => heap.isEmpty()));
+            continue;
+        }
+        if (command === 'clear') {
+            if (parts.length !== 0) return { items: [], error: '用法：clear' };
+            items.push({ opName: OP.CLEAR, action: async () => heap.clear() });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const parseHashBatch = (commands: string[], table: HashTable): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const integerValue = (text: string): number | null => {
+        const number = Number(text);
+        return Number.isInteger(number) ? number : null;
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'add' || command === 'contains' || command === 'remove') {
+            if (parts.length !== 1) return { items: [], error: `用法：${command} <键>` };
+            const key = integerValue(parts[0]);
+            if (key === null) return { items: [], error: `${command} 的键必须为整数` };
+            if (command === 'add') {
+                items.push({ opName: OP.HASH_ADD, action: () => table.add(key) });
+            } else if (command === 'contains') {
+                items.push(makeQueryItem(OP.HASH_FIND, `contains ${key}`, () => table.contains(key)));
+            } else {
+                items.push({ opName: OP.HASH_REMOVE, action: () => table.remove(key) });
+            }
+            continue;
+        }
+        if (command === 'size') {
+            if (parts.length !== 0) return { items: [], error: '用法：size' };
+            items.push(makeQueryItem('查询大小', 'size', async () => table.size()));
+            continue;
+        }
+        if (command === 'isempty') {
+            if (parts.length !== 0) return { items: [], error: '用法：isEmpty' };
+            items.push(makeQueryItem('判断为空', 'isEmpty', async () => table.isEmpty()));
+            continue;
+        }
+        if (command === 'clear') {
+            if (parts.length !== 0) return { items: [], error: '用法：clear' };
+            items.push({ opName: OP.CLEAR, action: async () => table.clear() });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const parseTrieBatch = (commands: string[], trie: Trie): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const wordValue = (text: string): string | null => /^[a-z]+$/.test(text) ? text : null;
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'insert' || command === 'find' || command === 'prefix' || command === 'delete') {
+            if (parts.length !== 1) return { items: [], error: `用法：${command} <单词>` };
+            const word = wordValue(parts[0]);
+            if (word === null) return { items: [], error: '单词只能包含小写字母 a-z' };
+            if (command === 'insert') {
+                items.push({ opName: OP.TRIE_INSERT, action: () => trie.insert(word) });
+            } else if (command === 'find') {
+                items.push(makeQueryItem(OP.TRIE_FIND, `find ${word}`, () => trie.find(word)));
+            } else if (command === 'prefix') {
+                items.push(makeQueryItem(OP.TRIE_PREFIX, `prefix ${word}`, () => trie.prefix(word)));
+            } else {
+                items.push({ opName: OP.TRIE_DELETE, action: () => trie.delete(word) });
+            }
+            continue;
+        }
+        if (command === 'size') {
+            if (parts.length !== 0) return { items: [], error: '用法：size' };
+            items.push(makeQueryItem('查询大小', 'size', async () => trie.size()));
+            continue;
+        }
+        if (command === 'isempty') {
+            if (parts.length !== 0) return { items: [], error: '用法：isEmpty' };
+            items.push(makeQueryItem('判断为空', 'isEmpty', async () => trie.isEmpty()));
+            continue;
+        }
+        if (command === 'clear') {
+            if (parts.length !== 0) return { items: [], error: '用法：clear' };
+            items.push({ opName: OP.CLEAR, action: async () => trie.clear() });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const parseSegmentBatch = (commands: string[]): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const numberValue = (text: string): number | null => {
+        const number = Number(text);
+        return Number.isFinite(number) ? number : null;
+    };
+    const integerValue = (text: string): number | null => {
+        const number = Number(text);
+        return Number.isInteger(number) ? number : null;
+    };
+    const checkRange = (l: number, r: number): void => {
+        const n = requireSegmentTree().getSize();
+        if (l < 0 || r >= n || l > r) {
+            throw new Error(`区间需在 0 到 ${n - 1} 之间，且左端点不大于右端点`);
+        }
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'add') {
+            if (parts.length !== 3) return { items: [], error: '用法：add <l> <r> <增量>' };
+            const l = integerValue(parts[0]);
+            const r = integerValue(parts[1]);
+            const value = numberValue(parts[2]);
+            if (l === null || r === null || value === null) {
+                return { items: [], error: 'add 的端点和增量必须为数字，端点还需为整数' };
+            }
+            items.push({
+                opName: OP.SEG_ADD,
+                action: () => {
+                    checkRange(l, r);
+                    return requireSegmentTree().add(l, r, value);
+                },
+            });
+            continue;
+        }
+        if (command === 'query') {
+            if (parts.length !== 2) return { items: [], error: '用法：query <l> <r>' };
+            const l = integerValue(parts[0]);
+            const r = integerValue(parts[1]);
+            if (l === null || r === null) return { items: [], error: 'query 的端点必须为整数' };
+            items.push(makeQueryItem(OP.SEG_QUERY, `query [${l}, ${r}]`, () => {
+                checkRange(l, r);
+                return requireSegmentTree().query(l, r);
+            }));
+            continue;
+        }
+        if (command === 'getsize') {
+            if (parts.length !== 0) return { items: [], error: '用法：getSize' };
+            items.push(makeQueryItem('查询大小', 'getSize', async () => requireSegmentTree().getSize()));
+            continue;
+        }
+        if (command === 'init') {
+            if (parts.length === 0) return { items: [], error: '用法：init <v1> <v2> ...' };
+            const data: number[] = [];
+            for (const token of parts.join(' ').split(/[,，\s]+/)) {
+                if (token === '') continue;
+                const value = numberValue(token);
+                if (value === null) return { items: [], error: 'init 的值必须为数字' };
+                data.push(value);
+            }
+            if (data.length === 0) return { items: [], error: '用法：init <v1> <v2> ...' };
+            items.push({ opName: OP.RESTART, action: async () => rebuildSegmentTree(data) });
+            continue;
+        }
+        if (command === 'reset') {
+            if (parts.length !== 0) return { items: [], error: '用法：reset' };
+            items.push({
+                opName: OP.RESTART,
+                action: async () => rebuildSegmentTree([1, 1, 1, 1, 1, 1, 1, 1]),
+            });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const parseUnionFindBatch = (commands: string[]): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const integerValue = (text: string): number | null => {
+        const number = Number(text);
+        return Number.isInteger(number) ? number : null;
+    };
+    const checkIndex = (index: number): void => {
+        if (index < 0 || index >= unionFindSize) {
+            throw new Error(`节点编号需在 0 到 ${unionFindSize - 1} 之间`);
+        }
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'union' || command === 'insameset') {
+            if (parts.length !== 2) return { items: [], error: `用法：${command} <u> <v>` };
+            const u = integerValue(parts[0]);
+            const v = integerValue(parts[1]);
+            if (u === null || v === null) return { items: [], error: `${command} 的节点编号必须为整数` };
+            if (command === 'union') {
+                items.push({
+                    opName: OP.UNION_FIND_UNION,
+                    action: () => {
+                        checkIndex(u);
+                        checkIndex(v);
+                        return requireUnionFind().union(u, v);
+                    },
+                });
+            } else {
+                items.push(makeQueryItem(
+                    OP.UNION_FIND_SAME,
+                    `inSameSet ${u} ${v}`,
+                    () => {
+                        checkIndex(u);
+                        checkIndex(v);
+                        return requireUnionFind().inSameSet(u, v);
+                    },
+                ));
+            }
+            continue;
+        }
+        if (command === 'find' || command === 'getsize') {
+            if (parts.length !== 1) return { items: [], error: `用法：${command} <x>` };
+            const x = integerValue(parts[0]);
+            if (x === null) return { items: [], error: `${command} 的节点编号必须为整数` };
+            if (command === 'find') {
+                items.push(makeQueryItem(OP.UNION_FIND_FIND, `find ${x}`, () => {
+                    checkIndex(x);
+                    return requireUnionFind().find(x);
+                }));
+            } else {
+                items.push(makeQueryItem(OP.UNION_FIND_SIZE, `getSize ${x}`, () => {
+                    checkIndex(x);
+                    return requireUnionFind().getSize(x);
+                }));
+            }
+            continue;
+        }
+        if (command === 'init') {
+            if (parts.length !== 1) return { items: [], error: '用法：init <n>' };
+            const n = integerValue(parts[0]);
+            if (n === null || n < 2 || n > 20) {
+                return { items: [], error: '元素个数必须为 2 到 20 之间的整数' };
+            }
+            items.push({ opName: '设置规模', action: async () => rebuildUnionFind(n) });
+            continue;
+        }
+        if (command === 'reset') {
+            if (parts.length !== 0) return { items: [], error: '用法：reset' };
+            items.push({
+                opName: OP.RESTART,
+                action: async () => rebuildUnionFind(UNION_FIND_DEFAULT_SIZE),
+            });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const parseBitBatch = (commands: string[]): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const numberValue = (text: string): number | null => {
+        const number = Number(text);
+        return Number.isFinite(number) ? number : null;
+    };
+    const integerValue = (text: string): number | null => {
+        const number = Number(text);
+        return Number.isInteger(number) ? number : null;
+    };
+    const checkIndex = (index: number): void => {
+        if (index < 1 || index > bitSize) {
+            throw new Error(`下标需在 1 到 ${bitSize} 之间`);
+        }
+    };
+    const checkRange = (l: number, r: number): void => {
+        if (l < 1 || r > bitSize || l > r) {
+            throw new Error(`区间需在 1 到 ${bitSize} 之间，且左端点不大于右端点`);
+        }
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'add') {
+            if (parts.length !== 2) return { items: [], error: '用法：add <idx> <增量>' };
+            const index = integerValue(parts[0]);
+            const value = numberValue(parts[1]);
+            if (index === null || value === null) {
+                return { items: [], error: 'add 的下标必须为整数，增量必须为数字' };
+            }
+            items.push({
+                opName: OP.BIT_ADD,
+                action: () => {
+                    checkIndex(index);
+                    return requireBit().add(index, value);
+                },
+            });
+            continue;
+        }
+        if (command === 'query') {
+            if (parts.length !== 2) return { items: [], error: '用法：query <l> <r>' };
+            const l = integerValue(parts[0]);
+            const r = integerValue(parts[1]);
+            if (l === null || r === null) return { items: [], error: 'query 的端点必须为整数' };
+            items.push(makeQueryItem(OP.BIT_QUERY, `query [${l}, ${r}]`, () => {
+                checkRange(l, r);
+                return requireBit().query(l, r);
+            }));
+            continue;
+        }
+        if (command === 'init') {
+            if (parts.length !== 1 && parts.length !== 2) {
+                return { items: [], error: '用法：init <n> [初始值]' };
+            }
+            const n = integerValue(parts[0]);
+            if (n === null || n < 1 || n > 20) {
+                return { items: [], error: '元素个数必须为 1 到 20 之间的整数' };
+            }
+            const initial = parts.length === 2 ? numberValue(parts[1]) : 1;
+            if (initial === null) return { items: [], error: '初始值必须为数字' };
+            items.push({ opName: '设置规模', action: async () => rebuildBit(n, initial) });
+            continue;
+        }
+        if (command === 'reset') {
+            if (parts.length !== 0) return { items: [], error: '用法：reset' };
+            items.push({
+                opName: OP.RESTART,
+                action: async () => rebuildBit(BIT_DEFAULT_SIZE, 1),
+            });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+/************************************************** */
+// 算法命令辅助
+const requireBinarySearch = (): BinarySearch => {
+    if (!(currentDS instanceof BinarySearch)) throw new Error('二分查找实例不可用');
+    return currentDS;
+};
+
+const requireTraversal = (): BinaryTreeTraversal => {
+    if (!(currentDS instanceof BinaryTreeTraversal)) throw new Error('二叉树遍历实例不可用');
+    return currentDS;
+};
+
+const requireKMP = (): KMP => {
+    if (!(currentDS instanceof KMP)) throw new Error('KMP 实例不可用');
+    return currentDS;
+};
+
+const requireSort = (): BubbleSort | InsertionSort | MergeSort | QuickSort => {
+    const ds = currentDS;
+    if (ds instanceof BubbleSort || ds instanceof InsertionSort ||
+        ds instanceof MergeSort || ds instanceof QuickSort) {
+        return ds;
+    }
+    throw new Error('排序实例不可用');
+};
+
+const rebuildBinarySearch = (data: number[]): void => {
+    bsDataLen = data.length;
+    bsVars.value = {
+        left: 0,
+        right: bsDataLen - 1,
+        mid: Math.floor((bsDataLen - 1) / 2),
+        target: bsVars.value.target,
+    };
+    DataNode.restart();
+    visualizerManager.switchVisualizer(VisualizerType.BINARY_SEARCH);
+    resetCanvasView();
+    currentDS = create(BinarySearch, data);
+    updateStats();
+    addMessage(`已用 [${data.join(', ')}] 重建数据`, MessageType.SUCCESS);
+};
+
+interface TraversalStructure {
+    rootId: number;
+    nodeIds: number[];
+    children: Map<number, number[]>;
+    error: string | null;
+}
+
+const parseTraversalStructure = (values: number[]): TraversalStructure => {
+    const empty: TraversalStructure = { rootId: -1, nodeIds: [], children: new Map(), error: null };
+    if (values.length === 0 || values.length % 2 !== 0) {
+        return { ...empty, error: '边序列长度必须为偶数，每两个数表示一条边 u v' };
+    }
+    if (values.some(value => !Number.isInteger(value) || value < 0)) {
+        return { ...empty, error: '节点编号必须为非负整数' };
+    }
+
+    const nodeIds = Array.from(new Set(values)).sort((a, b) => a - b);
+    const parentOf = new Map<number, number>();
+    const children = new Map<number, number[]>();
+    for (let i = 0; i < values.length; i += 2) {
+        const u = values[i];
+        const v = values[i + 1];
+        if (u === v) {
+            return { ...empty, error: `节点 ${u} 不能以自己为父节点` };
+        }
+        if (parentOf.has(u)) {
+            return { ...empty, error: `节点 ${u} 有多个父节点` };
+        }
+        parentOf.set(u, v);
+        const kids = children.get(v) ?? [];
+        kids.push(u);
+        if (kids.length > 2) {
+            return { ...empty, error: `节点 ${v} 超过两个子节点` };
+        }
+        children.set(v, kids);
+    }
+
+    const roots = nodeIds.filter(id => !parentOf.has(id));
+    if (roots.length !== 1) {
+        return { ...empty, error: `必须恰好有一个根节点，当前有 ${roots.length} 个` };
+    }
+
+    const rootId = roots[0];
+    const visited = new Set<number>();
+    const stack = [rootId];
+    while (stack.length > 0) {
+        const id = stack.pop()!;
+        if (visited.has(id)) {
+            return { ...empty, error: '树中存在环' };
+        }
+        visited.add(id);
+        for (const child of children.get(id) ?? []) {
+            stack.push(child);
+        }
+    }
+    if (visited.size !== nodeIds.length) {
+        return { ...empty, error: '所有节点必须连通到根节点' };
+    }
+
+    return { rootId, nodeIds, children, error: null };
+};
+
+const parseTraversalInput = (raw: string): { values: number[]; error: string | null } => {
+    const tokens = raw.trim().split(/[,，\s]+/).filter(Boolean);
+    if (tokens.length === 0) {
+        return { values: [], error: '请输入树边序列' };
+    }
+    const values = tokens.map(Number);
+    const structure = parseTraversalStructure(values);
+    return { values, error: structure.error };
+};
+
+const validateTraversalInput = (raw: string): string | null =>
+    parseTraversalInput(raw).error;
+
+const rebuildTraversalFromEdges = (values: number[]): void => {
+    const parsed = parseTraversalStructure(values);
+    if (parsed.error !== null) throw new Error(parsed.error);
+
+    DataNode.restart();
+    visualizerManager.switchVisualizer(VisualizerType.BINARY_TREE_TRAVERSAL);
+    resetCanvasView();
+
+    const nodes = new Map<number, BinaryTreeTraversalNode>();
+    for (const id of parsed.nodeIds) {
+        nodes.set(id, create(BinaryTreeTraversalNode, null, null, id));
+    }
+    for (const id of parsed.nodeIds) {
+        const children = parsed.children.get(id) ?? [];
+        const node = nodes.get(id)!;
+        if (children[0] !== undefined) node._set_left(nodes.get(children[0])!);
+        if (children[1] !== undefined) node._set_right(nodes.get(children[1])!);
+    }
+
+    const root = nodes.get(parsed.rootId)!;
+    currentDS = create(BinaryTreeTraversal, root);
+    traversalNodeCount = parsed.nodeIds.length;
+    traversalEdges = [...values];
+    updateStats();
+    addMessage(`已设置包含 ${traversalNodeCount} 个节点的二叉树`, MessageType.SUCCESS);
+};
+
+const resetTraversal = (): void => {
+    if (traversalEdges !== null) {
+        rebuildTraversalFromEdges(traversalEdges);
+        addMessage('已重新开始', MessageType.SUCCESS);
+        return;
+    }
+    DataNode.restart();
+    visualizerManager.switchVisualizer(VisualizerType.BINARY_TREE_TRAVERSAL);
+    resetCanvasView();
+    currentDS = createStructure(VisualizerType.BINARY_TREE_TRAVERSAL);
+    traversalNodeCount = 7;
+    updateStats();
+    addMessage('已重新开始', MessageType.SUCCESS);
+};
+
+const rebuildGraph = (key: VisualizerType, edges: number[][]): void => {
+    graphEdgesByKey.set(key, edges);
+    DataNode.restart();
+    visualizerManager.switchVisualizer(key);
+    resetCanvasView();
+    currentDS = createGraphDS(key);
+    updateStats();
+    addMessage(
+        `已设置自定义图：${graphNodeCnt} 个节点，${edges.length} 条边`,
+        MessageType.SUCCESS,
+    );
+};
+
+const resetGraph = (key: VisualizerType): void => {
+    DataNode.restart();
+    visualizerManager.switchVisualizer(key);
+    createDS(key);
+    resetCanvasView();
+    updateStats();
+    addMessage('已重新开始', MessageType.SUCCESS);
+};
+
+const runGraphAlgorithm = async (key: VisualizerType, start: number): Promise<void> => {
+    const ds = currentDS;
+    if (!ds) throw new Error('图实例不可用');
+    switch (key) {
+        case VisualizerType.DIJKSTRA:
+            await (ds as dijkstra).execute(start);
+            break;
+        case VisualizerType.FLOYD:
+            await (ds as floyd).execute();
+            break;
+        case VisualizerType.PRIM:
+            await (ds as prim).execute();
+            break;
+        case VisualizerType.KRUSKAL:
+            await (ds as kruskal).execute();
+            break;
+        default:
+            throw new Error('当前不是图算法');
+    }
+};
+
+const parseGraphCommandValues = (values: number[], key: VisualizerType): GraphParseResult => {
+    if (values.length === 0 || values.length % 3 !== 0) {
+        return { edges: [], error: '边序列长度必须是 3 的倍数（起点 终点 权值）' };
+    }
+    const lines: string[] = [];
+    for (let i = 0; i < values.length; i += 3) {
+        lines.push(`${values[i]} ${values[i + 1]} ${values[i + 2]}`);
+    }
+    return parseGraphEdges(lines.join('\n'), !isDirectedGraph(key));
+};
+
+const rebuildSort = (key: VisualizerType, data: number[]): void => {
+    sortData.value = [...data];
+    DataNode.restart();
+    visualizerManager.switchVisualizer(key);
+    resetCanvasView();
+    currentDS = createStructure(key);
+    const vis = visualizerManager.getCurrentVisualizer();
+    if (vis instanceof SortVisualizer) vis.preview([...data]);
+    updateStats();
+    addMessage(`数组已设置为：[${data.join(', ')}]`, MessageType.SUCCESS);
+};
+
+const resetSort = (key: VisualizerType): void => {
+    DataNode.restart();
+    visualizerManager.switchVisualizer(key);
+    createDS(key);
+    resetCanvasView();
+    updateStats();
+    addMessage('已重新开始', MessageType.SUCCESS);
+};
+
+const runSortAlgorithm = async (key: VisualizerType, data: number[]): Promise<void> => {
+    DataNode.restart();
+    visualizerManager.switchVisualizer(key);
+    resetCanvasView();
+    currentDS = createStructure(key);
+    addMessage(`开始对 [${data.join(', ')}] 排序`, MessageType.INFO);
+    const ds = requireSort();
+    if (key === VisualizerType.BUBBLE_SORT) await (ds as BubbleSort).sort(data);
+    else if (key === VisualizerType.INSERTION_SORT) await (ds as InsertionSort).sort(data);
+    else if (key === VisualizerType.MERGE_SORT) await (ds as MergeSort).sort(data);
+    else await (ds as QuickSort).sort(data);
+};
+
+const rebuildKMP = (str: string, template: string): void => {
+    lastKmpStr = str;
+    lastKmpTemplate = template;
+    DataNode.restart();
+    visualizerManager.switchVisualizer(VisualizerType.KMP);
+    resetCanvasView();
+    currentDS = create(KMP, str, template);
+    updateStats();
+    addMessage(`已设置主串「${str}」和模式串「${template}」`, MessageType.SUCCESS);
+};
+
+const resetKMP = (): void => {
+    rebuildKMP('ababcabab', 'abab');
+};
+
+const numberListFromParts = (parts: string[]): number[] | null => {
+    const tokens = parts.join(' ').split(/[,，\s]+/).filter(Boolean);
+    if (tokens.length === 0) return null;
+    const values = tokens.map(Number);
+    return values.every(Number.isFinite) ? values : null;
+};
+
+const integerListFromParts = (parts: string[]): number[] | null => {
+    const values = numberListFromParts(parts);
+    return values !== null && values.every(Number.isInteger) ? values : null;
+};
+
+const parseBinarySearchBatch = (commands: string[]): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    const numberValue = (text: string): number | null => {
+        const value = Number(text);
+        return Number.isFinite(value) ? value : null;
+    };
+
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'find') {
+            if (parts.length !== 1) return { items: [], error: '用法：find <目标值>' };
+            const target = numberValue(parts[0]);
+            if (target === null) return { items: [], error: 'find 的目标值必须为数字' };
+            items.push(makeQueryItem(OP.SEARCH, `find ${target}`, async () => {
+                bsVars.value.target = target;
+                addMessage(`开始二分查找 target=${target}`, MessageType.INFO);
+                return requireBinarySearch().find(target);
+            }));
+            continue;
+        }
+        if (command === 'setdata') {
+            const values = numberListFromParts(parts);
+            if (values === null || values.length === 0) {
+                return { items: [], error: '用法：setData <值1> <值2> ...' };
+            }
+            values.sort((a, b) => a - b);
+            items.push({
+                opName: '设置数组',
+                action: async () => rebuildBinarySearch(values),
+            });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const parseTraversalBatch = (commands: string[]): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'setdata') {
+            const values = integerListFromParts(parts);
+            if (values === null) {
+                return { items: [], error: '用法：setData <u1> <v1> <u2> <v2> ...' };
+            }
+            const structure = parseTraversalStructure(values);
+            if (structure.error !== null) return { items: [], error: structure.error };
+            items.push({
+                opName: '设置数据',
+                action: async () => rebuildTraversalFromEdges(values),
+            });
+            continue;
+        }
+        if (command === 'preordertraversal' || command === 'inordertraversal' ||
+            command === 'postordertraversal') {
+            if (parts.length !== 0) return { items: [], error: `用法：${command}` };
+            const opName = command === 'preordertraversal' ? OP.PRE_ORDER
+                : command === 'inordertraversal' ? OP.IN_ORDER : OP.POST_ORDER;
+            items.push({
+                opName,
+                action: async () => {
+                    const ds = requireTraversal();
+                    if (command === 'preordertraversal') await ds.preOrderTraversal();
+                    else if (command === 'inordertraversal') await ds.inOrderTraversal();
+                    else await ds.postOrderTraversal();
+                },
+            });
+            continue;
+        }
+        if (command === 'reset') {
+            if (parts.length !== 0) return { items: [], error: '用法：reset' };
+            items.push({ opName: OP.RESTART, action: async () => resetTraversal() });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const parseGraphBatch = (commands: string[], key: VisualizerType): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'setdata') {
+            const values = numberListFromParts(parts);
+            if (values === null) {
+                return { items: [], error: '用法：setData <u1> <v1> <w1> ...' };
+            }
+            const parsed = parseGraphCommandValues(values, key);
+            if (parsed.error !== null) return { items: [], error: parsed.error };
+            items.push({
+                opName: '设置图',
+                action: async () => rebuildGraph(key, parsed.edges),
+            });
+            continue;
+        }
+        if (command === 'execute') {
+            if (parts.length > 1) return { items: [], error: '用法：execute [起点]' };
+            let start = 0;
+            if (parts.length === 1) {
+                if (key !== VisualizerType.DIJKSTRA) {
+                    return { items: [], error: '只有 Dijkstra 的 execute 支持起点参数' };
+                }
+                const value = Number(parts[0]);
+                if (!Number.isInteger(value)) return { items: [], error: '起点必须为整数' };
+                start = value;
+            }
+            items.push({
+                opName: OP.GRAPH_RUN,
+                action: async () => {
+                    addMessage(`开始执行 ${menuTitle(key)} 算法`, MessageType.INFO);
+                    await runGraphAlgorithm(key, start);
+                },
+            });
+            continue;
+        }
+        if (command === 'reset') {
+            if (parts.length !== 0) return { items: [], error: '用法：reset' };
+            items.push({ opName: OP.RESTART, action: async () => resetGraph(key) });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const parseSortBatch = (commands: string[], key: VisualizerType): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'setdata') {
+            const values = numberListFromParts(parts);
+            if (values === null) {
+                return { items: [], error: '用法：setData <值1> <值2> ...' };
+            }
+            items.push({
+                opName: '设置数组',
+                action: async () => rebuildSort(key, values),
+            });
+            continue;
+        }
+        if (command === 'sort') {
+            if (parts.length !== 0) return { items: [], error: '用法：sort' };
+            items.push({
+                opName: OP.SORT_RUN,
+                action: async () => {
+                    if (sortData.value.length === 0) throw new Error('请先使用 setData 设置数组');
+                    await runSortAlgorithm(key, [...sortData.value]);
+                },
+            });
+            continue;
+        }
+        if (command === 'reset') {
+            if (parts.length !== 0) return { items: [], error: '用法：reset' };
+            items.push({ opName: OP.RESTART, action: async () => resetSort(key) });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const parseKMPBatch = (commands: string[]): {
+    items: CommandBatchItem[];
+    error: string | null;
+} => {
+    const items: CommandBatchItem[] = [];
+    for (const text of commands) {
+        const parts = text.split(/\s+/);
+        const command = (parts.shift() ?? '').toLowerCase();
+        if (command === 'setdata') {
+            if (parts.length < 1 || parts.length > 2) {
+                return { items: [], error: '用法：setData <主串> [模式串]' };
+            }
+            const str = parts[0];
+            const template = parts[1] ?? '';
+            if (str === '') return { items: [], error: '主串不能为空' };
+            items.push({
+                opName: '设置数据',
+                action: async () => rebuildKMP(str, template),
+            });
+            continue;
+        }
+        if (command === 'search') {
+            if (parts.length !== 0) return { items: [], error: '用法：search' };
+            items.push(makeQueryItem(OP.KMP_SEARCH, 'search', async () => {
+                addMessage('开始 KMP 匹配', MessageType.INFO);
+                return requireKMP().search();
+            }));
+            continue;
+        }
+        if (command === 'getnext') {
+            if (parts.length !== 0) return { items: [], error: '用法：getNext' };
+            items.push({
+                opName: OP.KMP_NEXT,
+                action: async () => requireKMP().getNext(),
+            });
+            continue;
+        }
+        if (command === 'reset') {
+            if (parts.length !== 0) return { items: [], error: '用法：reset' };
+            items.push({ opName: OP.RESTART, action: async () => resetKMP() });
+            continue;
+        }
+        return { items: [], error: `未知命令：${command}` };
+    }
+    return { items, error: null };
+};
+
+const executeCommandBatch = (items: CommandBatchItem[]): void => {
+    runOp(async () => {
+        const runningLine = pushCommandLine('执行中...', 'info');
+        try {
+            for (const item of items) {
+                currentOp.value = item.opName;
+                const value = await item.action();
+                if (item.highlight !== undefined && isLinkedListDS.value) {
+                    highlightListIndex(item.highlight);
+                }
+                if (item.output) {
+                    pushCommandLine(item.output(value), 'output');
+                }
+            }
+        } catch (error) {
+            pushCommandLine('命令执行失败：' +
+                (error instanceof Error ? error.message : String(error)), 'error');
+        } finally {
+            removeCommandLine(runningLine);
+            updateStats();
+        }
+    });
+};
+
+const handleCommand = (raw: string): void => {
+    const commands = raw
+        .split(/\r?\n/)
+        .map(command => command.trim())
+        .filter(command => command !== '');
+    if (commands.length === 0) return;
+    for (const command of commands) {
+        pushCommandLine(command, 'input');
+    }
+
+    let parsed: { items: CommandBatchItem[]; error: string | null } | null = null;
+    if (isLinearListInstance(currentDS)) {
+        parsed = parseListBatch(commands, currentDS);
+    } else if (isStackInstance(currentDS)) {
+        parsed = parseStackBatch(commands, currentDS);
+    } else if (isQueueInstance(currentDS)) {
+        parsed = parseQueueBatch(commands, currentDS);
+    } else if (isDequeInstance(currentDS)) {
+        parsed = parseDequeBatch(commands, currentDS);
+    } else if (isBSTFamilyInstance(currentDS)) {
+        parsed = parseBSTBatch(commands, currentDS);
+    } else if (isBinaryHeapInstance(currentDS)) {
+        parsed = parseHeapBatch(commands, currentDS);
+    } else if (isHashTableInstance(currentDS)) {
+        parsed = parseHashBatch(commands, currentDS);
+    } else if (isTrieInstance(currentDS)) {
+        parsed = parseTrieBatch(commands, currentDS);
+    } else if (isSegmentTreeInstance(currentDS)) {
+        parsed = parseSegmentBatch(commands);
+    } else if (isUnionFindInstance(currentDS)) {
+        parsed = parseUnionFindBatch(commands);
+    } else if (isBitInstance(currentDS)) {
+        parsed = parseBitBatch(commands);
+    } else if (currentMenu.value === VisualizerType.BINARY_SEARCH) {
+        parsed = parseBinarySearchBatch(commands);
+    } else if (currentMenu.value === VisualizerType.BINARY_TREE_TRAVERSAL) {
+        parsed = parseTraversalBatch(commands);
+    } else if (isGraphAlgorithm(currentMenu.value)) {
+        parsed = parseGraphBatch(commands, currentMenu.value);
+    } else if (isSortAlgorithm(currentMenu.value)) {
+        parsed = parseSortBatch(commands, currentMenu.value);
+    } else if (currentMenu.value === VisualizerType.KMP) {
+        parsed = parseKMPBatch(commands);
+    }
+
+    if (parsed === null) {
+        pushCommandLine('当前数据结构暂未实现命令行命令', 'error');
+        return;
+    }
+    if (parsed.error !== null) {
+        pushCommandLine(parsed.error, 'error');
+        return;
+    }
+    executeCommandBatch(parsed.items);
+};
+
+/************************************************** */
+// 栈 / 队列 / 双端队列
 const handleStackPush = (v: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
-    const val = Number(v.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.STACK_PUSH;
-        addMessage(`入栈：${val}`, MessageType.INFO);
-        setListInsertHint(0);
-        try {
-            await (ds as ArrayStack | LinkedStack).push(val);
-        } catch (error) {
-            addOperationError('入栈操作', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`push ${Number(v.val ?? 0)}`);
 };
 const handleStackPop = (): void => {
     const ds = currentDS;
     if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.STACK_POP;
-        addMessage('出栈', MessageType.INFO);
-        try {
-            await (ds as ArrayStack | LinkedStack).pop();
-        } catch (error) {
-            addOperationError('出栈操作', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand('pop');
 };
 const handleStackTop = (): void => {
     const ds = currentDS;
     if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.STACK_TOP;
-        addMessage('查看栈顶', MessageType.INFO);
-        try {
-            const v = await (ds as ArrayStack | LinkedStack).top();
-            currentResult.value = v === null ? 'null' : String(v);
-        } catch (error) {
-            addOperationError('查看栈顶', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand('top');
 };
 
 const handleQueuePush = (v: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
-    const val = Number(v.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.QUEUE_PUSH;
-        addMessage(`入队：${val}`, MessageType.INFO);
-        setListInsertHint((ds as ArrayQueue | LinkedQueue).size());
-        try {
-            await (ds as ArrayQueue | LinkedQueue).push(val);
-        } catch (error) {
-            addOperationError('入队操作', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`push ${Number(v.val ?? 0)}`);
 };
 const handleQueuePop = (): void => {
     const ds = currentDS;
     if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.QUEUE_POP;
-        addMessage('出队', MessageType.INFO);
-        try {
-            await (ds as ArrayQueue | LinkedQueue).pop();
-        } catch (error) {
-            addOperationError('出队操作', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand('pop');
 };
 const handleQueueFront = (): void => {
     const ds = currentDS;
     if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.QUEUE_FRONT;
-        addMessage('查看队首', MessageType.INFO);
-        try {
-            const v = await (ds as ArrayQueue | LinkedQueue).top();
-            currentResult.value = v === null ? 'null' : String(v);
-        } catch (error) {
-            addOperationError('查看队首', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand('top');
 };
 
 const handleHeapPush = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const val = Number(v.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.HEAP_PUSH;
-        addMessage(`插入堆元素 ${val}`, MessageType.INFO);
-        try {
-            await (ds as BinaryHeap).push(val);
-        } catch (error) {
-            addOperationError('插入堆元素', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`push ${Number(v.val ?? 0)}`);
 };
-
 const handleHeapPop = (): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.HEAP_POP;
-        addMessage('弹出堆顶', MessageType.INFO);
-        try {
-            await (ds as BinaryHeap).pop();
-        } catch (error) {
-            addOperationError('弹出堆顶', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand('pop');
 };
-
 const handleHeapTop = (): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.HEAP_TOP;
-        addMessage('查看堆顶', MessageType.INFO);
-        try {
-            const v = await (ds as BinaryHeap).top();
-            currentResult.value = v === null ? 'null' : String(v);
-        } catch (error) {
-            addOperationError('查看堆顶', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand('top');
 };
 
 const handleHashAdd = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const key = Number(v.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.HASH_ADD;
-        addMessage(`插入键 ${key}`, MessageType.INFO);
-        try {
-            await (ds as HashTable).add(key);
-        } catch (error) {
-            addOperationError('插入键', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`add ${Number(v.val ?? 0)}`);
 };
-
 const handleHashFind = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const key = Number(v.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.HASH_FIND;
-        addMessage(`查找键 ${key}`, MessageType.INFO);
-        try {
-            const found = await (ds as HashTable).contains(key);
-            currentResult.value = String(found);
-        } catch (error) {
-            addOperationError('查找键', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`contains ${Number(v.val ?? 0)}`);
 };
-
 const handleHashRemove = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const key = Number(v.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.HASH_REMOVE;
-        addMessage(`删除键 ${key}`, MessageType.INFO);
-        try {
-            await (ds as HashTable).remove(key);
-        } catch (error) {
-            addOperationError('删除键', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`remove ${Number(v.val ?? 0)}`);
 };
 
-const handleDequePushFirst = (v: Record<string, string>): void => {
+const handleDequePushFront = (v: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
-    const val = Number(v.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.DEQUE_FIRST;
-        addMessage(`头部入队：${val}`, MessageType.INFO);
-        setListInsertHint(0);
-        try {
-            await (ds as ArrayDeque | LinkedDeque).pushFirst(val);
-        } catch (error) {
-            addOperationError('头部入队', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`pushFront ${Number(v.val ?? 0)}`);
 };
-const handleDequePushLast = (v: Record<string, string>): void => {
+const handleDequePushBack = (v: Record<string, string>): void => {
     const ds = currentDS;
     if (!ds) return;
-    const val = Number(v.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.DEQUE_LAST;
-        addMessage(`尾部入队：${val}`, MessageType.INFO);
-        setListInsertHint((ds as ArrayDeque | LinkedDeque).size());
-        try {
-            await (ds as ArrayDeque | LinkedDeque).pushLast(val);
-        } catch (error) {
-            addOperationError('尾部入队', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`pushBack ${Number(v.val ?? 0)}`);
 };
-const handleDequePopFirst = (): void => {
+const handleDequePopFront = (): void => {
     const ds = currentDS;
     if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.DEQUE_POP_FIRST;
-        addMessage('头部出队', MessageType.INFO);
-        try {
-            await (ds as ArrayDeque | LinkedDeque).popFirst();
-        } catch (error) {
-            addOperationError('头部出队', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand('popFront');
 };
-const handleDequePopLast = (): void => {
+const handleDequePopBack = (): void => {
     const ds = currentDS;
     if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.DEQUE_POP_LAST;
-        addMessage('尾部出队', MessageType.INFO);
-        try {
-            await (ds as ArrayDeque | LinkedDeque).popLast();
-        } catch (error) {
-            addOperationError('尾部出队', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand('popBack');
 };
-const handleDequeGetFirst = (): void => {
+const handleDequeGetFront = (): void => {
     const ds = currentDS;
     if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.DEQUE_GET_FIRST;
-        addMessage('查看队首', MessageType.INFO);
-        try {
-            const v = await (ds as ArrayDeque | LinkedDeque).getFirst();
-            currentResult.value = v === null ? 'null' : String(v);
-        } catch (error) {
-            addOperationError('查看队首', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand('getFront');
 };
-const handleDequeGetLast = (): void => {
+const handleDequeGetBack = (): void => {
     const ds = currentDS;
     if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.DEQUE_GET_LAST;
-        addMessage('查看队尾', MessageType.INFO);
-        try {
-            const v = await (ds as ArrayDeque | LinkedDeque).getLast();
-            currentResult.value = v === null ? 'null' : String(v);
-        } catch (error) {
-            addOperationError('查看队尾', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand('getBack');
 };
 
-/************************************************** */
-// 线段�?
 const handleSegAdd = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const l = Number(v.l ?? 0);
-    const r = Number(v.r ?? 0);
-    const val = Number(v.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.SEG_ADD;
-        addMessage(`区间 [${l}, ${r}] 增加 ${val}`, MessageType.INFO);
-        try {
-            await (ds as SegmentTree).add(l, r, val);
-        } catch (error) {
-            addOperationError('区间加操作', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`add ${Number(v.l ?? 0)} ${Number(v.r ?? 0)} ${Number(v.val ?? 0)}`);
 };
 const handleSegQuery = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const l = Number(v.l ?? 0);
-    const r = Number(v.r ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.SEG_QUERY;
-        addMessage(`查询区间 [${l}, ${r}] 的和`, MessageType.INFO);
-        try {
-            const res = await (ds as SegmentTree).query(l, r);
-            currentResult.value = String(res);
-        } catch (error) {
-            addOperationError('区间查询', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`query ${Number(v.l ?? 0)} ${Number(v.r ?? 0)}`);
 };
 const handleSegReset = (): void => {
-    runOp(async () => {
-        currentOp.value = OP.RESTART;
-        segDataLen = 8;
-        DataNode.restart();
-        visualizerManager.switchVisualizer(VisualizerType.SEGMENT_TREE);
-        currentDS = create(SegmentTree, [1, 1, 1, 1, 1, 1, 1, 1]);
-        updateStats();
-        addMessage('已重新开始', MessageType.SUCCESS);
-    });
+    handleCommand('reset');
 };
 const handleSegSetData = (v: Record<string, string>): void => {
     const input = (v.data ?? '').trim();
@@ -1622,266 +3407,76 @@ const handleSegSetData = (v: Record<string, string>): void => {
         addMessage('输入无效，请用逗号分隔数字', MessageType.WARNING);
         return;
     }
-    runOp(async () => {
-        currentOp.value = OP.RESTART;
-        segDataLen = data.length;
-        DataNode.restart();
-        visualizerManager.switchVisualizer(VisualizerType.SEGMENT_TREE);
-        currentDS = create(SegmentTree, data);
-        updateStats();
-        addMessage(`已用 [${data.join(', ')}] 重建线段树`, MessageType.SUCCESS);
-    });
+    handleCommand(`init ${data.join(' ')}`);
 };
 
-/************************************************** */
-// 并查集
 const handleUnionFindUnion = (values: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const u = Number(values.u ?? 0);
-    const v = Number(values.v ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.UNION_FIND_UNION;
-        addMessage(`合并节点 ${u} 与节点 ${v} 所在的集合`, MessageType.INFO);
-        try {
-            await (ds as UnionFindSet).union(u, v);
-        } catch (error) {
-            addOperationError('合并集合', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`union ${Number(values.u ?? 0)} ${Number(values.v ?? 0)}`);
 };
-
 const handleUnionFindFind = (values: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const x = Number(values.x ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.UNION_FIND_FIND;
-        addMessage(`查找节点 ${x} 所在集合的根节点`, MessageType.INFO);
-        try {
-            const root = await (ds as UnionFindSet).find(x);
-            currentResult.value = root === null ? 'null' : String(root);
-        } catch (error) {
-            addOperationError('查找根节点', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`find ${Number(values.x ?? 0)}`);
 };
-
 const handleUnionFindSize = (values: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const x = Number(values.x ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.UNION_FIND_SIZE;
-        addMessage(`查询节点 ${x} 所在集合的大小`, MessageType.INFO);
-        try {
-            const size = await (ds as UnionFindSet).getSize(x);
-            currentResult.value = String(size);
-        } catch (error) {
-            addOperationError('查询集合大小', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`getSize ${Number(values.x ?? 0)}`);
 };
-
 const handleUnionFindSame = (values: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const u = Number(values.u ?? 0);
-    const v = Number(values.v ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.UNION_FIND_SAME;
-        addMessage(`判断节点 ${u} 与节点 ${v} 是否属于同一集合`, MessageType.INFO);
-        try {
-            const same = await (ds as UnionFindSet).inSameSet(u, v);
-            currentResult.value = String(same);
-        } catch (error) {
-            addOperationError('判断是否同集合', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`inSameSet ${Number(values.u ?? 0)} ${Number(values.v ?? 0)}`);
 };
-
 const handleUnionFindReset = (): void => {
-    runOp(async () => {
-        currentOp.value = OP.RESTART;
-        unionFindSize = UNION_FIND_DEFAULT_SIZE;
-        DataNode.restart();
-        visualizerManager.switchVisualizer(VisualizerType.UNION_FIND);
-        currentDS = create(UnionFindSet, unionFindSize);
-        updateStats();
-        addMessage('已重新开始', MessageType.SUCCESS);
-    });
+    handleCommand('reset');
 };
-
 const handleUnionFindSetSize = (values: Record<string, string>): void => {
-    const n = Number(values.n);
-    runOp(async () => {
-        currentOp.value = '设置规模';
-        unionFindSize = n;
-        DataNode.restart();
-        visualizerManager.switchVisualizer(VisualizerType.UNION_FIND);
-        currentDS = create(UnionFindSet, unionFindSize);
-        updateStats();
-        addMessage(`已初始化 ${n} 个独立元素`, MessageType.SUCCESS);
-    });
+    handleCommand(`init ${Number(values.n)}`);
 };
 
-/************************************************** */
-// 树状数组
 const handleBitAdd = (values: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const idx = Number(values.idx ?? 0);
-    const val = Number(values.val ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.BIT_ADD;
-        addMessage(`将 arr[${idx}] 增加 ${val}`, MessageType.INFO);
-        try {
-            await (ds as BinaryIndexedTree).add(idx, val);
-        } catch (error) {
-            addOperationError('单点加', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`add ${Number(values.idx ?? 0)} ${Number(values.val ?? 0)}`);
 };
-
 const handleBitQuery = (values: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    const l = Number(values.l ?? 0);
-    const r = Number(values.r ?? 0);
-    runOp(async () => {
-        currentOp.value = OP.BIT_QUERY;
-        addMessage(`查询区间 [${l}, ${r}] 的元素和`, MessageType.INFO);
-        try {
-            const sum = await (ds as BinaryIndexedTree).query(l, r);
-            currentResult.value = sum === null ? 'null' : String(sum);
-        } catch (error) {
-            addOperationError('区间求和', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand(`query ${Number(values.l ?? 0)} ${Number(values.r ?? 0)}`);
 };
-
 const handleBitReset = (): void => {
-    runOp(async () => {
-        currentOp.value = OP.RESTART;
-        bitSize = BIT_DEFAULT_SIZE;
-        DataNode.restart();
-        visualizerManager.switchVisualizer(VisualizerType.BINARY_INDEXED_TREE);
-        currentDS = create(BinaryIndexedTree, bitSize, 1);
-        updateStats();
-        addMessage('已重新开始', MessageType.SUCCESS);
-    });
+    handleCommand('reset');
 };
-
 const handleBitSetSize = (values: Record<string, string>): void => {
-    const n = Number(values.n);
-    runOp(async () => {
-        currentOp.value = '设置规模';
-        bitSize = n;
-        DataNode.restart();
-        visualizerManager.switchVisualizer(VisualizerType.BINARY_INDEXED_TREE);
-        currentDS = create(BinaryIndexedTree, bitSize, 1);
-        updateStats();
-        addMessage(`已初始化长度为 ${n} 的树状数组`, MessageType.SUCCESS);
-    });
+    handleCommand(`init ${Number(values.n)}`);
 };
 
-/************************************************** */
-// Trie
 const handleTrieInsert = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
+    if (!currentDS) return;
     const word = (v.word ?? '').trim();
     if (!word) return;
-    runOp(async () => {
-        currentOp.value = OP.TRIE_INSERT;
-        addMessage(`插入字符串「${word}」`, MessageType.INFO);
-        try {
-            await (ds as Trie).insert(word);
-        } catch (error) {
-            addOperationError('插入操作', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`insert ${word}`);
 };
 const handleTrieFind = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
+    if (!currentDS) return;
     const word = (v.word ?? '').trim();
     if (!word) return;
-    runOp(async () => {
-        currentOp.value = OP.TRIE_FIND;
-        addMessage(`查找字符串「${word}」`, MessageType.INFO);
-        try {
-            const cnt = await (ds as Trie).find(word);
-            currentResult.value = String(cnt);
-        } catch (error) {
-            addOperationError('查找操作', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`find ${word}`);
 };
 const handleTriePrefix = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
+    if (!currentDS) return;
     const word = (v.word ?? '').trim();
     if (!word) return;
-    runOp(async () => {
-        currentOp.value = OP.TRIE_PREFIX;
-        addMessage(`查询前缀「${word}」的字符串数量`, MessageType.INFO);
-        try {
-            const cnt = await (ds as Trie).prefix(word);
-            currentResult.value = String(cnt);
-        } catch (error) {
-            addOperationError('前缀查询', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`prefix ${word}`);
 };
 const handleTrieDelete = (v: Record<string, string>): void => {
-    const ds = currentDS;
-    if (!ds) return;
+    if (!currentDS) return;
     const word = (v.word ?? '').trim();
     if (!word) return;
-    runOp(async () => {
-        currentOp.value = OP.TRIE_DELETE;
-        addMessage(`删除字符串「${word}」`, MessageType.INFO);
-        try {
-            await (ds as Trie).delete(word);
-        } catch (error) {
-            addOperationError('删除操作', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`delete ${word}`);
 };
 
-/************************************************** */
-// 图算�?
 const handleGraphRun = (): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.GRAPH_RUN;
-        addMessage(`开始执行 ${menuTitle(currentMenu.value)} 算法`, MessageType.INFO);
-        try {
-            const key = currentMenu.value;
-            if (key === VisualizerType.DIJKSTRA) await (ds as dijkstra).execute(0);
-            else if (key === VisualizerType.FLOYD) await (ds as floyd).execute();
-            else if (key === VisualizerType.PRIM) await (ds as prim).execute();
-            else await (ds as kruskal).execute();
-        } catch (error) {
-            addOperationError('算法执行', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    const key = currentMenu.value;
+    if (!isGraphAlgorithm(key)) return;
+    handleCommand(key === VisualizerType.DIJKSTRA ? 'execute 0' : 'execute');
 };
 const handleGraphSet = (v: Record<string, string>): void => {
     const key = currentMenu.value;
@@ -1891,194 +3486,92 @@ const handleGraphSet = (v: Record<string, string>): void => {
         addMessage(result.error, MessageType.WARNING);
         return;
     }
-
-    runOp(async () => {
-        currentOp.value = '设置图';
-        graphEdgesByKey.set(key, result.edges);
-        DataNode.restart();
-        visualizerManager.switchVisualizer(key);
-        resetCanvasView();
-        currentDS = createGraphDS(key);
-        updateStats();
-        addMessage(
-            `已设置自定义图：${graphNodeCnt} 个节点，${result.edges.length} 条边`,
-            MessageType.SUCCESS,
-        );
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`setData ${result.edges.flat().join(' ')}`);
 };
 
 const handleGraphReset = (): void => {
-    runOp(async () => {
-        currentOp.value = OP.RESTART;
-        const key = currentMenu.value;
-        DataNode.restart();
-        visualizerManager.switchVisualizer(key);
-        createDS(key);
-        resetCanvasView();
-        updateStats();
-        addMessage('已重新开始', MessageType.SUCCESS);
-    });
+    handleCommand('reset');
 };
 
-/************************************************** */
-// 排序
 const handleSortSet = (v: Record<string, string>): void => {
-    const data = parseNumberList(v.sortInput ?? '');
-    if (data === null) {
+    const raw = (v.sortInput ?? '').trim();
+    if (raw === '') {
         addMessage('请输入有效数组（逗号分隔的数字）', MessageType.WARNING);
         return;
     }
-
-    const key = currentMenu.value;
-    runOp(async () => {
-        currentOp.value = '设置数组';
-        sortData.value = [...data];
-        DataNode.restart();
-        visualizerManager.switchVisualizer(key);
-        resetCanvasView();
-        currentDS = createStructure(key);
-        const vis = visualizerManager.getCurrentVisualizer();
-        if (vis instanceof SortVisualizer) vis.preview([...data]);
-        updateStats();
-        addMessage(`数组已设置为：[${data.join(', ')}]`, MessageType.SUCCESS);
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand(`setData ${raw}`);
 };
 
 const handleSortRun = (): void => {
-    const data = [...sortData.value];
-    if (data.length === 0) {
-        addMessage('请先设置数组', MessageType.WARNING);
-        return;
-    }
-
-    const key = currentMenu.value;
-    runOp(async () => {
-        currentOp.value = OP.SORT_RUN;
-        sortData.value = [...data];
-        DataNode.restart();
-        visualizerManager.switchVisualizer(key);
-        resetCanvasView();
-        currentDS = createStructure(key);
-        addMessage(`开始对 [${data.join(', ')}] 排序`, MessageType.INFO);
-        try {
-            const ds = currentDS;
-            if (key === VisualizerType.BUBBLE_SORT) await (ds as BubbleSort).sort(data);
-            else if (key === VisualizerType.INSERTION_SORT) await (ds as InsertionSort).sort(data);
-            else if (key === VisualizerType.MERGE_SORT) await (ds as MergeSort).sort(data);
-            else await (ds as QuickSort).sort(data);
-        } catch (error) {
-            addOperationError('排序', error);
-        }
-        updateStats();
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    handleCommand('sort');
 };
 const handleSortReset = (): void => {
-    runOp(async () => {
-        currentOp.value = OP.RESTART;
-        const key = currentMenu.value;
-        DataNode.restart();
-        visualizerManager.switchVisualizer(key);
-        createDS(key);
-        resetCanvasView();
-        updateStats();
-        addMessage('已重新开始', MessageType.SUCCESS);
-    });
+    handleCommand('reset');
 };
 
-/************************************************** */
-// KMP
-const syncKMP = (str: string, template: string): void => {
-    if (str === lastKmpStr && template === lastKmpTemplate) return;
-    lastKmpStr = str;
-    lastKmpTemplate = template;
-    DataNode.restart();
-    visualizerManager.switchVisualizer(VisualizerType.KMP);
-    currentDS = create(KMP, str, template);
-    updateStats();
-};
 const handleKMPSearch = (v: Record<string, string>): void => {
     const str = (v.str ?? lastKmpStr).trim();
     const template = (v.template ?? lastKmpTemplate).trim();
-    runOp(async () => {
-        syncKMP(str, template);
-        const ds = currentDS;
-        if (!ds) return;
-        currentOp.value = OP.KMP_SEARCH;
-        addMessage('开始 KMP 匹配', MessageType.INFO);
-        try {
-            const pos = await (ds as KMP).search();
-            currentResult.value = pos === null || pos === undefined ? 'null' : String(pos);
-        } catch (error) {
-            addOperationError('KMP匹配', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (str === '') {
+        addMessage('主串不能为空', MessageType.WARNING);
+        return;
+    }
+    const changed = str !== lastKmpStr || template !== lastKmpTemplate;
+    handleCommand(changed
+        ? `setData ${str}${template === '' ? '' : ' ' + template}\nsearch`
+        : 'search');
 };
 /************************************************** */
 // 二叉树遍�?
+const handleTraversalSetData = (v: Record<string, string>): void => {
+    const parsed = parseTraversalInput(v.traversalEdges ?? '');
+    if (parsed.error !== null) {
+        addMessage(parsed.error, MessageType.WARNING);
+        return;
+    }
+    handleCommand(`setData ${parsed.values.join(' ')}`);
+};
 const handlePreOrder = (): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.PRE_ORDER;
-        addMessage('开始前序遍历', MessageType.INFO);
-        try {
-            await (ds as BinaryTreeTraversal).preOrderTraversal();
-        } catch (error) {
-            addOperationError('前序遍历', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand('preOrderTraversal');
 };
 const handleInOrder = (): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.IN_ORDER;
-        addMessage('开始中序遍历', MessageType.INFO);
-        try {
-            await (ds as BinaryTreeTraversal).inOrderTraversal();
-        } catch (error) {
-            addOperationError('中序遍历', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand('inOrderTraversal');
 };
 const handlePostOrder = (): void => {
-    const ds = currentDS;
-    if (!ds) return;
-    runOp(async () => {
-        currentOp.value = OP.POST_ORDER;
-        addMessage('开始后序遍历', MessageType.INFO);
-        try {
-            await (ds as BinaryTreeTraversal).postOrderTraversal();
-        } catch (error) {
-            addOperationError('后序遍历', error);
-        }
-        stepController.setStatus(StepStatus.PAUSE_OR_FREE);
-    });
+    if (!currentDS) return;
+    handleCommand('postOrderTraversal');
 };
 
 /************************************************** */
 // 清空 / 重新开�?
 const handleClear = (): void => {
     const key = currentMenu.value;
-    // 二分查找 / 二叉树遍历：重建页面
-    if (key === VisualizerType.BINARY_SEARCH || key === VisualizerType.BINARY_TREE_TRAVERSAL) {
+    // 二分查找：重建页面
+    if (key === VisualizerType.BINARY_SEARCH) {
         runOp(async () => {
             currentOp.value = OP.RESTART;
             DataNode.restart();
             visualizerManager.switchVisualizer(key);
+            resetCanvasView();
             createDS(key);
             addMessage('已重新开始', MessageType.SUCCESS);
         });
         return;
     }
+    // 二叉树遍历：通过命令行重建（保留自定义树）
+    if (key === VisualizerType.BINARY_TREE_TRAVERSAL) {
+        handleCommand('reset');
+        return;
+    }
     const ds = currentDS;
     if (!ds) return;
+    if (isLinearListDS.value || isStackDS.value || isQueueDS.value || isDequeDS.value ||
+        isTreeDS.value || isBinaryHeapDS.value || isHashDS.value || isTrieDS.value) {
+        handleCommand('clear');
+        return;
+    }
     runOp(async () => {
         currentOp.value = OP.CLEAR;
         addMessage(`清空${menuTitle(key)}数据`, MessageType.INFO);
@@ -2102,22 +3595,7 @@ const handleSetData = (v: Record<string, string>): void => {
         addMessage('请输入升序数组（逗号分隔）', MessageType.WARNING);
         return;
     }
-    const data = input.split(/[,，\s]+/).map(s => Number(s.trim())).filter(n => !isNaN(n));
-    if (data.length === 0) {
-        addMessage('输入无效，请用逗号分隔数字', MessageType.WARNING);
-        return;
-    }
-    data.sort((a, b) => a - b);
-    runOp(async () => {
-        currentOp.value = '设置数组';
-        bsDataLen = data.length;
-        bsVars.value = { left: 0, right: bsDataLen - 1, mid: Math.floor((bsDataLen - 1) / 2), target: bsVars.value.target };
-        DataNode.restart();
-        visualizerManager.switchVisualizer(VisualizerType.BINARY_SEARCH);
-        currentDS = create(BinarySearch, data);
-        updateStats();
-        addMessage(`已用 [${data.join(', ')}] 重建数据`, MessageType.SUCCESS);
-    });
+    handleCommand(`setData ${input}`);
 };
 
 /************************************************** */
@@ -2142,9 +3620,17 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
             }];
         case VisualizerType.BINARY_TREE_TRAVERSAL:
             return [{
-                hint: '点击按钮执行对应遍历，结果展示在画布底部',
+                hint: '每两个数 u v 表示 v 是 u 的父节点；第一个孩子为左孩子，第二个为右孩子',
                 inputs: [],
                 buttons: [
+                    {
+                        label: '设置数据',
+                        icon: 'settings',
+                        params: [traversalEdgesParam],
+                        getInitial: () => ({ traversalEdges: traversalEdges?.join(' ') ?? '' }),
+                        validate: (v) => validateTraversalInput(v.traversalEdges ?? ''),
+                        onClick: handleTraversalSetData,
+                    },
                     { label: '前序遍历', icon: 'list', onClick: handlePreOrder },
                     { label: '中序遍历', icon: 'list', onClick: handleInOrder },
                     { label: '后序遍历', icon: 'list', onClick: handlePostOrder },
@@ -2156,9 +3642,9 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
                 hint: '链地址法：数字键直接作为哈希值，桶下标 = (桶数量-1) & 哈希值',
                 inputs: [{ key: 'val', placeholder: '键（整数）' }],
                 buttons: [
-                    { label: '插入键', icon: 'plus', params: [valParam], onClick: handleHashAdd },
-                    { label: '查找键', icon: 'search', params: [valParam], onClick: handleHashFind },
-                    { label: '删除键', icon: 'minus', params: [valParam], onClick: handleHashRemove },
+                    { label: '插入键', icon: 'plus', params: [valParam], validate: (v) => validateHashKey(v.val ?? ''), onClick: handleHashAdd },
+                    { label: '查找键', icon: 'search', params: [valParam], validate: (v) => validateHashKey(v.val ?? ''), onClick: handleHashFind },
+                    { label: '删除键', icon: 'minus', params: [valParam], validate: (v) => validateHashKey(v.val ?? ''), onClick: handleHashRemove },
                     { label: '清空哈希表', icon: 'trash', onClick: handleClear },
                 ],
             }];
@@ -2295,8 +3781,10 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
                         label: '开始匹配',
                         icon: 'search',
                         params: [kmpStrParam, kmpTemplateParam],
+                        validate: (v) => validateKmpMain(v.str ?? '') ?? validateKmpTemplate(v.template ?? ''),
                         onClick: handleKMPSearch,
                     },
+                    { label: '重新开始', icon: 'rotate', onClick: () => handleCommand('reset') },
                 ],
             }];
         case VisualizerType.SEGMENT_TREE:
@@ -2405,12 +3893,12 @@ const controlGroups = computed<ControlGroupDef[]>(() => {
             return [{
                 inputs: [{ key: 'val', placeholder: '数值' }],
                 buttons: [
-                    { label: '头部入队', icon: 'plus', params: [valParam], onClick: handleDequePushFirst },
-                    { label: '尾部入队', icon: 'plus', params: [valParam], onClick: handleDequePushLast },
-                    { label: '头部出队', icon: 'minus', onClick: handleDequePopFirst },
-                    { label: '尾部出队', icon: 'minus', onClick: handleDequePopLast },
-                    { label: '取队首', icon: 'search', onClick: handleDequeGetFirst },
-                    { label: '取队尾', icon: 'search', onClick: handleDequeGetLast },
+                    { label: '头部入队', icon: 'plus', params: [valParam], onClick: handleDequePushFront },
+                    { label: '尾部入队', icon: 'plus', params: [valParam], onClick: handleDequePushBack },
+                    { label: '头部出队', icon: 'minus', onClick: handleDequePopFront },
+                    { label: '尾部出队', icon: 'minus', onClick: handleDequePopBack },
+                    { label: '取队首', icon: 'search', onClick: handleDequeGetFront },
+                    { label: '取队尾', icon: 'search', onClick: handleDequeGetBack },
                     { label: '清空队列', icon: 'trash', onClick: handleClear },
                 ],
             }];
@@ -2519,6 +4007,7 @@ onMounted(async () => {
 
     canvasViewportRef.value?.addEventListener('wheel', handleCanvasWheel, { passive: false });
     window.addEventListener('resize', handleWindowResize);
+    window.addEventListener('keydown', handleGlobalKeydown);
     handleWindowResize();
 
     // 二分查找：由可视化器在指针变化时回调，避免轮�?
@@ -2534,6 +4023,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
     canvasViewportRef.value?.removeEventListener('wheel', handleCanvasWheel);
     window.removeEventListener('resize', handleWindowResize);
+    window.removeEventListener('keydown', handleGlobalKeydown);
     visualizerManager.setBinarySearchPointerListener(null);
     stepController.setAnimationBarrier(null);
 });
@@ -2548,6 +4038,7 @@ onBeforeUnmount(() => {
             :nodes="menuTree"
             :current-key="currentMenu"
             @select="selectMenu"
+            @settings="openSettings"
         />
         <div
             class="splitter splitter-v"
@@ -2564,8 +4055,144 @@ onBeforeUnmount(() => {
         <!-- 中间：主区域 -->
         <main class="main-area">
             <div class="top-header">
-                <h1 class="page-title">{{ menuTitle(currentMenu) }}</h1>
+                <div class="page-title-row">
+                    <h1 class="page-title">{{ menuTitle(currentMenu) }}</h1>
+                    <button
+                        v-if="hasPageInfo"
+                        type="button"
+                        class="page-info-btn"
+                        title="查看提示信息"
+                        aria-label="查看提示信息"
+                        @click="openPageInfo"
+                    >i</button>
+                </div>
             </div>
+            <Teleport to="body">
+                <div
+                    v-if="pageInfoOpen"
+                    class="page-info-overlay"
+                    @pointerdown="onPageInfoPointerDown"
+                    @click="onPageInfoClick"
+                >
+                    <div class="page-info-dialog" role="dialog" aria-modal="true" :aria-label="menuTitle(currentMenu)">
+                        <h3 class="page-info-title">{{ menuTitle(currentMenu) }}</h3>
+                        <div class="page-info-content">
+                            <div v-if="currentPageInfo.info.trim() !== ''" class="page-info-summary">
+                                <p class="page-info-text">{{ currentPageInfo.info }}</p>
+                            </div>
+                            <p v-if="currentPageInfo.notes.trim() !== ''" class="page-info-notes">{{ currentPageInfo.notes }}</p>
+                        </div>
+                        <div class="page-info-actions">
+                            <button type="button" class="page-info-close" @click="pageInfoOpen = false">关闭</button>
+                        </div>
+                    </div>
+                </div>
+            </Teleport>
+            <Teleport to="body">
+                <div
+                    v-if="settingsOpen"
+                    class="settings-overlay"
+                    @pointerdown="onSettingsPointerDown"
+                    @click="onSettingsClick"
+                >
+                    <div class="settings-dialog" role="dialog" aria-modal="true" aria-label="设置">
+                        <div class="settings-header">
+                            <h3 class="settings-title">设置</h3>
+                            <div class="settings-header-actions">
+                                <span class="settings-persist-hint">设置保存至浏览器本地存储</span>
+                                <button
+                                    type="button"
+                                    class="settings-reset-settings"
+                                    @click="resetSettingsDrafts"
+                                >恢复默认</button>
+                            </div>
+                        </div>
+                        <div class="settings-content">
+                            <div class="settings-section">
+                                <label class="settings-field">
+                                    <span class="settings-label">播放时间间隔</span>
+                                    <span class="settings-input-row">
+                                        <input
+                                            v-model="settingsDraft"
+                                            class="settings-input"
+                                            type="number"
+                                            min="0.1"
+                                            max="10"
+                                            step="0.1"
+                                            inputmode="decimal"
+                                            @input="settingsError = ''"
+                                            @keydown.enter="applySettings"
+                                        >
+                                        <span class="settings-unit">秒</span>
+                                    </span>
+                                </label>
+                                <p class="settings-hint">
+                                    点击“播放”后，每执行一步等待的时间。允许范围 0.1 到 10 秒。
+                                </p>
+                            </div>
+                            <div class="settings-section">
+                                <label class="settings-field">
+                                    <span class="settings-label">夜间模式</span>
+                                    <button
+                                        type="button"
+                                        class="settings-switch"
+                                        :class="{ on: themeDraft === 'dark' }"
+                                        role="switch"
+                                        :aria-checked="themeDraft === 'dark'"
+                                        @click="toggleThemeDraft"
+                                    >
+                                        <span class="settings-switch-thumb"></span>
+                                    </button>
+                                </label>
+                                <p class="settings-hint">
+                                    开启后使用深色背景和浅色文字/图形。
+                                </p>
+                            </div>
+                            <div class="settings-section">
+                                <div class="settings-label">快捷键</div>
+                                <div class="settings-shortcut-row">
+                                    <span class="settings-shortcut-label">单步执行</span>
+                                    <input
+                                        readonly
+                                        class="settings-shortcut-input"
+                                        title="点击后按下快捷键"
+                                        :value="shortcutDrafts.step"
+                                        @keydown="captureShortcut('step', $event)"
+                                    >
+                                </div>
+                                <div class="settings-shortcut-row">
+                                    <span class="settings-shortcut-label">播放 / 暂停</span>
+                                    <input
+                                        readonly
+                                        class="settings-shortcut-input"
+                                        title="点击后按下快捷键"
+                                        :value="shortcutDrafts.playPause"
+                                        @keydown="captureShortcut('playPause', $event)"
+                                    >
+                                </div>
+                                <div class="settings-shortcut-row">
+                                    <span class="settings-shortcut-label">快速执行</span>
+                                    <input
+                                        readonly
+                                        class="settings-shortcut-input"
+                                        title="点击后按下快捷键"
+                                        :value="shortcutDrafts.fast"
+                                        @keydown="captureShortcut('fast', $event)"
+                                    >
+                                </div>
+                                <p class="settings-hint">
+                                    点击快捷键输入框后按下新的组合键，保存后生效；快捷键仅在输入框外触发。
+                                </p>
+                            </div>
+                            <p v-if="settingsError !== ''" class="settings-error">{{ settingsError }}</p>
+                        </div>
+                        <div class="settings-actions">
+                            <button type="button" class="settings-btn" @click="cancelSettings">取消</button>
+                            <button type="button" class="settings-btn primary" @click="applySettings">保存</button>
+                        </div>
+                    </div>
+                </div>
+            </Teleport>
             <div class="canvas-container">
                 <StatsPanel
                     :is-binary-search="currentMenu === VisualizerType.BINARY_SEARCH"
@@ -2630,7 +4257,27 @@ onBeforeUnmount(() => {
         ></div>
 
         <!-- 右侧：操作台 -->
-        <ControlPanel :style="controlStyle" :groups="controlGroups" :current-menu="currentMenu" />
+        <aside class="control-area" :style="controlStyle">
+            <ControlPanel :groups="controlGroups" :current-menu="currentMenu" />
+            <div
+                class="splitter splitter-h command-splitter"
+                :class="{ active: resizingTarget === 'command' }"
+                role="separator"
+                aria-orientation="horizontal"
+                title="拖拽调整命令行高度"
+                @pointerdown="beginResize('command', $event)"
+                @pointermove="moveResize"
+                @pointerup="endResize"
+                @pointercancel="endResize"
+            ></div>
+            <CommandPanel
+                :style="commandStyle"
+                :lines="commandLines"
+                :help="commandHelp"
+                @submit="handleCommand"
+                @clear="clearCommandLines"
+            />
+        </aside>
     </div>
 </template>
 
@@ -2664,13 +4311,21 @@ select {
     height: 100%;
     background: #fff;
 }
+.control-area {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #f7f9fc;
+}
 .sidebar {
     width: 220px;
     min-width: 0;
     height: 100%;
-    overflow-y: auto;
+    overflow: hidden;
     background: #f7f9fc;
-    padding: 12px 0;
+    padding: 0;
 }
 .splitter {
     position: relative;
@@ -2719,10 +4374,327 @@ select {
     background: #fff;
     text-align: center;
 }
+.page-title-row {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    max-width: 100%;
+}
 .page-title {
     font-size: 24px;
     font-weight: 700;
     color: #000;
+}
+.page-info-btn {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    height: 17px;
+    padding: 0;
+    color: #64748b;
+    background: #fff;
+    border: 1px solid #cfd8e3;
+    border-radius: 50%;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 12px;
+    font-style: italic;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.page-info-btn:hover {
+    color: #2b6cb0;
+    background: #eaf2fb;
+    border-color: #2b6cb0;
+}
+.page-info-btn:focus-visible {
+    outline: 2px solid #2b6cb0;
+    outline-offset: 2px;
+}
+.page-info-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.35);
+}
+.page-info-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(540px, calc(100vw - 32px));
+    max-height: min(620px, calc(100vh - 48px));
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.24);
+    font-family: 'JetBrains Mono', Consolas, 'Microsoft YaHei', monospace;
+}
+.page-info-title {
+    margin-bottom: 14px;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1f2937;
+}
+.page-info-content {
+    flex: 1;
+    min-height: 80px;
+    overflow-y: auto;
+}
+.page-info-summary {
+    padding: 16px;
+    color: #334155;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 15px;
+    line-height: 1.75;
+}
+.page-info-text {
+    margin: 0;
+    color: #374151;
+    font-size: 15px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.page-info-notes {
+    margin: 0 2px;
+    color: #4a5568;
+    font-size: 15px;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.page-info-summary + .page-info-notes {
+    margin-top: 14px;
+}
+.page-info-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #eef2f7;
+}
+.page-info-close {
+    padding: 6px 16px;
+    color: #374151;
+    background: #fff;
+    border: 1px solid #cfd8e3;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+}
+.page-info-close:hover {
+    color: #2b6cb0;
+    border-color: #2b6cb0;
+}
+.settings-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.35);
+}
+.settings-dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(460px, calc(100vw - 32px));
+    max-height: min(720px, calc(100vh - 48px));
+    padding: 20px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.24);
+}
+.settings-title {
+    margin-bottom: 0;
+    color: #1f2937;
+    font-size: 18px;
+    font-weight: 600;
+}
+.settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+}
+.settings-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.settings-reset-settings {
+    padding: 5px 10px;
+    color: #374151;
+    background: #fff;
+    border: 1px solid #cfd8e3;
+    border-radius: 5px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.settings-reset-settings:hover {
+    color: #2b6cb0;
+    border-color: #2b6cb0;
+}
+.settings-content {
+    flex: 1;
+    min-height: 108px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+.settings-section + .settings-section {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid #eef2f7;
+}
+.settings-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+.settings-label {
+    color: #374151;
+    font-size: 15px;
+}
+.settings-input-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+.settings-input {
+    width: 110px;
+    padding: 7px 10px;
+    color: #1f2937;
+    background: #fff;
+    border: 1px solid #cfd8e3;
+    border-radius: 5px;
+    outline: none;
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 14px;
+}
+.settings-input:focus {
+    border-color: #2b6cb0;
+    box-shadow: 0 0 0 2px rgba(43, 108, 176, 0.14);
+}
+.settings-unit {
+    color: #64748b;
+    font-size: 14px;
+}
+.settings-switch {
+    position: relative;
+    flex: none;
+    width: 44px;
+    height: 24px;
+    padding: 0;
+    background: #cbd5e1;
+    border: 0;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.settings-switch.on {
+    background: #2b6cb0;
+}
+.settings-switch-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+    transition: transform 0.15s;
+}
+.settings-switch.on .settings-switch-thumb {
+    transform: translateX(20px);
+}
+.settings-switch:focus-visible {
+    outline: 2px solid #2b6cb0;
+    outline-offset: 2px;
+}
+.settings-shortcut-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 10px;
+}
+.settings-shortcut-label {
+    color: #4b5563;
+    font-size: 14px;
+}
+.settings-shortcut-input {
+    width: 160px;
+    padding: 7px 10px;
+    color: #1f2937;
+    background: #fff;
+    border: 1px solid #cfd8e3;
+    border-radius: 5px;
+    outline: none;
+    font-family: 'JetBrains Mono', Consolas, monospace;
+    font-size: 13px;
+    text-align: center;
+    cursor: pointer;
+}
+.settings-shortcut-input:focus {
+    border-color: #2b6cb0;
+    box-shadow: 0 0 0 2px rgba(43, 108, 176, 0.14);
+}
+.settings-hint {
+    margin-top: 10px;
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.6;
+}
+.settings-error {
+    margin-top: 8px;
+    color: #dc2626;
+    font-size: 13px;
+}
+.settings-persist-hint {
+    color: #94a3b8;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: nowrap;
+}
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid #eef2f7;
+}
+.settings-btn {
+    padding: 7px 16px;
+    color: #374151;
+    background: #fff;
+    border: 1px solid #cfd8e3;
+    border-radius: 5px;
+    font-size: 14px;
+    cursor: pointer;
+}
+.settings-btn:hover {
+    color: #2b6cb0;
+    border-color: #2b6cb0;
+}
+.settings-btn.primary {
+    color: #fff;
+    background: #2b6cb0;
+    border-color: #2b6cb0;
+}
+.settings-btn.primary:hover {
+    background: #24598f;
 }
 .canvas-container {
     position: relative;
@@ -2772,5 +4744,332 @@ select {
     background: #eaf2fb;
     border-color: #2b6cb0;
     color: #2b5f9e;
+}
+</style>
+<style>
+/* 夜间模式 */
+html[data-theme='dark'] {
+    color-scheme: dark;
+    background: #0b1220;
+}
+
+html[data-theme='dark'] body,
+html[data-theme='dark'] #app {
+    color: #e5e7eb;
+    background: #0b1220;
+}
+
+html[data-theme='dark'] .app-container,
+html[data-theme='dark'] .main-area {
+    background: #0b1220;
+}
+
+html[data-theme='dark'] .sidebar,
+html[data-theme='dark'] .control-area,
+html[data-theme='dark'] .control-panel,
+html[data-theme='dark'] .command-panel {
+    background: #0f172a;
+    color: #cbd5e1;
+}
+
+html[data-theme='dark'] .top-header {
+    background: #111827;
+    border-bottom-color: #1f2937;
+}
+
+html[data-theme='dark'] .page-title,
+html[data-theme='dark'] .menu-title {
+    color: #f3f4f6;
+}
+
+html[data-theme='dark'] .menu-group {
+    color: #e5e7eb;
+}
+
+html[data-theme='dark'] .menu-group:hover,
+html[data-theme='dark'] .menu-leaf:hover,
+html[data-theme='dark'] .menu-settings:hover {
+    color: #93c5fd;
+    background: #1e293b;
+}
+
+html[data-theme='dark'] .menu-leaf {
+    color: #cbd5e1;
+}
+
+html[data-theme='dark'] .menu-leaf.active {
+    color: #93c5fd;
+    background: #1e3a5f;
+    border-left-color: #60a5fa;
+}
+
+html[data-theme='dark'] .menu-settings {
+    color: #94a3b8;
+}
+
+html[data-theme='dark'] .canvas-container,
+html[data-theme='dark'] .canvas-viewport {
+    background: #0b1220;
+}
+
+html[data-theme='dark'] .canvas-svg {
+    background: transparent !important;
+    filter: invert(1) hue-rotate(180deg) brightness(1.12);
+}
+
+html[data-theme='dark'] .splitter::after {
+    background: #334155;
+}
+
+html[data-theme='dark'] .splitter:hover::after,
+html[data-theme='dark'] .splitter.active::after {
+    background: #60a5fa;
+}
+
+html[data-theme='dark'] .panel-title,
+html[data-theme='dark'] .command-title,
+html[data-theme='dark'] .command-header,
+html[data-theme='dark'] .message-header,
+html[data-theme='dark'] .message-clear {
+    color: #cbd5e1;
+}
+
+html[data-theme='dark'] .action-btn,
+html[data-theme='dark'] .control-btn,
+html[data-theme='dark'] .canvas-zoom,
+html[data-theme='dark'] .dialog-btn.secondary,
+html[data-theme='dark'] .dialog-random,
+html[data-theme='dark'] .page-info-btn,
+html[data-theme='dark'] .page-info-close,
+html[data-theme='dark'] .settings-btn,
+html[data-theme='dark'] .settings-reset-settings,
+html[data-theme='dark'] .settings-shortcut-input,
+html[data-theme='dark'] .settings-input,
+html[data-theme='dark'] .command-help-btn {
+    color: #cbd5e1;
+    background: #1e293b;
+    border-color: #475569;
+}
+
+html[data-theme='dark'] .action-btn:hover,
+html[data-theme='dark'] .control-btn:hover,
+html[data-theme='dark'] .canvas-zoom:hover,
+html[data-theme='dark'] .dialog-btn.secondary:hover,
+html[data-theme='dark'] .dialog-random:hover,
+html[data-theme='dark'] .page-info-btn:hover,
+html[data-theme='dark'] .page-info-close:hover,
+html[data-theme='dark'] .settings-btn:hover,
+html[data-theme='dark'] .settings-reset-settings:hover,
+html[data-theme='dark'] .command-help-btn:hover {
+    color: #93c5fd;
+    background: #243449;
+    border-color: #60a5fa;
+}
+
+html[data-theme='dark'] .settings-btn.primary,
+html[data-theme='dark'] .dialog-btn.primary,
+html[data-theme='dark'] .command-help-close {
+    color: #f8fafc;
+    background: #2563eb;
+    border-color: #2563eb;
+}
+
+html[data-theme='dark'] .settings-btn.primary:hover,
+html[data-theme='dark'] .dialog-btn.primary:hover,
+html[data-theme='dark'] .command-help-close:hover {
+    background: #1d4ed8;
+}
+
+html[data-theme='dark'] .control-btn:hover,
+html[data-theme='dark'] .command-clear,
+html[data-theme='dark'] .message-clear {
+    color: #94a3b8;
+}
+
+html[data-theme='dark'] .command-clear:hover,
+html[data-theme='dark'] .message-clear:hover {
+    color: #93c5fd;
+    background: #1e293b;
+}
+
+html[data-theme='dark'] .message-panel {
+    background: #111827;
+}
+
+html[data-theme='dark'] .message-header {
+    border-bottom-color: #1f2937;
+}
+
+html[data-theme='dark'] .message-item {
+    color: #cbd5e1;
+}
+
+html[data-theme='dark'] .message-item.is-warning {
+    color: #fbbf24;
+}
+
+html[data-theme='dark'] .message-item.is-error {
+    color: #f87171;
+}
+
+html[data-theme='dark'] .message-item.is-success {
+    color: #4ade80;
+}
+
+html[data-theme='dark'] .message-item.is-new {
+    animation: none;
+}
+
+html[data-theme='dark'] .stats-panel,
+html[data-theme='dark'] .operation-panel,
+html[data-theme='dark'] .step-controls {
+    color: #e5e7eb;
+    background: rgba(17, 24, 39, 0.92);
+    border-color: #334155;
+}
+
+html[data-theme='dark'] .operation-label {
+    color: #94a3b8;
+}
+
+html[data-theme='dark'] .operation-value {
+    color: #e5e7eb;
+}
+
+html[data-theme='dark'] .operation-panel.is-result .operation-label,
+html[data-theme='dark'] .operation-panel.is-result .operation-value {
+    color: #4ade80;
+}
+
+html[data-theme='dark'] .command-panel {
+    border-top-color: #334155;
+}
+
+html[data-theme='dark'] .command-header,
+html[data-theme='dark'] .command-history,
+html[data-theme='dark'] .command-input-row {
+    color: #cbd5e1;
+}
+
+html[data-theme='dark'] .command-echo,
+html[data-theme='dark'] .command-output {
+    color: #e5e7eb;
+}
+
+html[data-theme='dark'] .command-info {
+    color: #94a3b8;
+}
+
+html[data-theme='dark'] .command-error {
+    color: #f87171;
+}
+
+html[data-theme='dark'] .command-prompt {
+    color: #60a5fa;
+}
+
+html[data-theme='dark'] .command-input-row {
+    background: #0f172a;
+    border-top-color: #334155;
+}
+
+html[data-theme='dark'] .command-input {
+    color: #e5e7eb;
+    background: transparent;
+}
+
+html[data-theme='dark'] .command-input::placeholder {
+    color: #94a3b8;
+}
+
+html[data-theme='dark'] .dialog,
+html[data-theme='dark'] .command-help-dialog,
+html[data-theme='dark'] .page-info-dialog,
+html[data-theme='dark'] .settings-dialog {
+    color: #cbd5e1;
+    background: #111827;
+}
+
+html[data-theme='dark'] .dialog-title,
+html[data-theme='dark'] .command-help-title,
+html[data-theme='dark'] .page-info-title,
+html[data-theme='dark'] .settings-title {
+    color: #f3f4f6;
+}
+
+html[data-theme='dark'] .dialog-field,
+html[data-theme='dark'] .settings-label,
+html[data-theme='dark'] .settings-shortcut-label {
+    color: #cbd5e1;
+}
+
+html[data-theme='dark'] .dialog-field input,
+html[data-theme='dark'] .dialog-field textarea,
+html[data-theme='dark'] .settings-input,
+html[data-theme='dark'] .settings-shortcut-input {
+    color: #e5e7eb;
+    background: #0f172a;
+    border-color: #475569;
+}
+
+html[data-theme='dark'] .dialog-field input:focus,
+html[data-theme='dark'] .dialog-field textarea:focus,
+html[data-theme='dark'] .settings-input:focus,
+html[data-theme='dark'] .settings-shortcut-input:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.18);
+}
+
+html[data-theme='dark'] .dialog-error,
+html[data-theme='dark'] .settings-error {
+    color: #f87171;
+}
+
+html[data-theme='dark'] .command-help-content,
+html[data-theme='dark'] .page-info-summary {
+    color: #cbd5e1;
+    background: #1e293b;
+    border-color: #334155;
+}
+
+html[data-theme='dark'] .command-help-subtitle,
+html[data-theme='dark'] .command-help-code {
+    color: #f3f4f6;
+}
+
+html[data-theme='dark'] .command-help-desc,
+html[data-theme='dark'] .command-help-note,
+html[data-theme='dark'] .page-info-text,
+html[data-theme='dark'] .page-info-notes {
+    color: #cbd5e1;
+}
+
+html[data-theme='dark'] .command-help-actions,
+html[data-theme='dark'] .page-info-actions,
+html[data-theme='dark'] .settings-actions,
+html[data-theme='dark'] .settings-section + .settings-section {
+    border-top-color: #334155;
+}
+
+html[data-theme='dark'] .settings-hint,
+html[data-theme='dark'] .settings-unit,
+html[data-theme='dark'] .settings-persist-hint {
+    color: #94a3b8;
+}
+
+html[data-theme='dark'] .settings-switch {
+    background: #475569;
+}
+
+html[data-theme='dark'] .settings-switch.on {
+    background: #3b82f6;
+}
+
+html[data-theme='dark'] .settings-switch-thumb {
+    background: #f8fafc;
+}
+
+html[data-theme='dark'] .page-info-actions {
+    border-top-color: #334155;
 }
 </style>

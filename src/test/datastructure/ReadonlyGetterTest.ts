@@ -59,7 +59,7 @@ export async function testReadonlyGetters(): Promise<string> {
 
     const deque = create(LinkedDeque);
     assert(deque.getHeaderNode() !== null, "链式双端队列 getHeaderNode 应返回哨兵头节点");
-    await deque.pushFirst(1);
+    await deque.pushFront(1);
     assert(deque.getHeaderNode() !== null, "插入后 getHeaderNode 仍应返回哨兵头节点");
     ++cases;
 

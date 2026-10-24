@@ -454,7 +454,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
 
         // 新节点淡入浮现；使用独立命名过渡，避免和位置移动过渡互相取消
         enterGroups.transition('node-enter')
-            .duration(180)
+            .duration(this.duration(180))
             .style('opacity', 1);
 
         // 统一更新（enter与update都要更新class/id/值/哨兵虚线）
@@ -464,7 +464,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
             .attr('data-id', (d: LayoutItem) => d.node.getId())
             .attr('class', (d: LayoutItem) => d.isSentinel ? 'linked-node sentinel-node' : 'linked-node')
             .transition('move')
-            .duration(180)
+            .duration(this.duration(180))
             .attr('transform', (d: LayoutItem) => `translate(${d.x}, ${d.y})`);
 
         merged.select('.node-box')
@@ -476,7 +476,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
         // 退出：节点在最后一次布局的位置淡出，而不是先跳回末尾再消失
         nodeGroups.exit()
             .transition('node-exit')
-            .duration(180)
+            .duration(this.duration(180))
             .style('opacity', 0)
             .remove();
 
@@ -510,6 +510,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
         const W = LinkedListVisualizer.NODE_WIDTH;
         const H = LinkedListVisualizer.NODE_HEIGHT;
         const PAD = 28;
+        const PAD_TOP = 90;
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         layout.forEach(it => {
             minX = Math.min(minX, it.x);
@@ -518,7 +519,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
             maxY = Math.max(maxY, it.y + H);
         });
         const contentW = (maxX - minX) + 2 * PAD;
-        const contentH = (maxY - minY) + 2 * PAD;
+        const contentH = (maxY - minY) + PAD + PAD_TOP;
         let w = Math.max(contentW, 340);
         let h = Math.max(contentH, 160);
         // 保持水平居中：视图不小于内容宽度时，把链表水平置于视图中央
@@ -526,7 +527,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
         if (w > contentW) {
             x0 = minX - PAD - (w - contentW) / 2;
         }
-        this.svg.attr('viewBox', `${x0} ${minY - PAD} ${w} ${h}`);
+        this.svg.attr('viewBox', `${x0} ${minY - PAD_TOP} ${w} ${h}`);
     }
 
     private fitHashViewBox(layout: LayoutItem[]): void {
@@ -783,7 +784,7 @@ export class LinkedListVisualizer extends BaseVisualizer {
      *
      * 页面层在执行插入前调用：
      * - 头插/栈 push 传 0；
-     * - 尾插/队尾入队/deque pushLast 传当前元素个数；
+     * - 尾插/队尾入队/deque pushBack 传当前元素个数；
      * - 按索引插入传目标下标。
      *
      * 可视化层据此把尚未链接的新节点直接画在它最终会出现的位置，
@@ -806,11 +807,11 @@ export class LinkedListVisualizer extends BaseVisualizer {
         if (g.empty()) return;
         g.select('.node-box')
             .transition()
-            .duration(150)
+            .duration(this.duration(150))
             .attr('stroke', COLOR_FLASH)
             .attr('stroke-width', 4)
             .transition()
-            .duration(450)
+            .duration(this.duration(450))
             .attr('stroke', '#333')
             .attr('stroke-width', 2);
     }

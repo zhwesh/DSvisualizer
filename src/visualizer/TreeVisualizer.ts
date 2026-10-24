@@ -66,11 +66,14 @@ export class TreeVisualizer extends BaseVisualizer {
     private mode: 'binary' | 'trie' = 'binary';
     // 遍历结果数组
     private answerNode: ArrayNode | null = null;
+    private answerData: (number | null)[] = [];
     // 遍历结果行始终保持的格子数（算法层 _delete 清空数据时不缩短）
     private answerLength = 0;
     // 遍历结果行的水平范围（用于 viewBox 纳入）
     private answerRowX0 = 0;
     private answerRowX1 = 0;
+    private answerRowY = 540;
+    private rebuildRowY = 530;
     // 替罪羊树子树重构期间显示的中序序列
     private rebuildSequence: number[] | null = null;
     // 重构后的子树根节点（此阶段只显示这棵独立子树，暂不连接父节点）
@@ -186,8 +189,16 @@ export class TreeVisualizer extends BaseVisualizer {
                 return;
             }
             if (method === '_set_visited' || method === '_clear_visited') {
-                group.select('.node-visit-ring')
-                    .style('opacity', this.nodeVisited(node) ? 1 : 0);
+                if (method === '_clear_visited') {
+                    this.nodes.forEach((item, id) => {
+                        const visible = item instanceof BinaryTreeNode && this.nodeVisited(item);
+                        this.mainGroup.select(`.tree-node[data-id="${id}"] .node-visit-ring`)
+                            .style('opacity', visible ? 1 : 0);
+                    });
+                } else {
+                    group.select('.node-visit-ring')
+                        .style('opacity', this.nodeVisited(node) ? 1 : 0);
+                }
             }
         });
     }
@@ -318,13 +329,13 @@ export class TreeVisualizer extends BaseVisualizer {
     private flashNode(id: number): void {
         const g = this.mainGroup.select(`.tree-node[data-id="${id}"]`);
         if (g.empty()) return;
-        g.select('circle')
+        g.select('circle:not(.node-visit-ring)')
             .transition()
-            .duration(90)
+            .duration(this.duration(90))
             .attr('stroke', COLOR_FLASH)
             .attr('stroke-width', 4)
             .transition()
-            .duration(130)
+            .duration(this.duration(130))
             .attr('stroke', () => '#666');
     }
 
@@ -476,6 +487,7 @@ export class TreeVisualizer extends BaseVisualizer {
     private nodeVisited(node: BinaryTreeNode<any>): boolean {
         if (node instanceof BinarySearchTreeNode) return node.visited;
         if (node instanceof BinaryTreeTraversalNode) return node.visited;
+        if (node instanceof SegmentTreeNode) return node.visited;
         return false;
     }
 
@@ -515,6 +527,12 @@ export class TreeVisualizer extends BaseVisualizer {
     private render(fit: boolean = true): void {
         if (this.mode !== 'binary') return;
         const layout = this.layoutTree();
+        const maxNodeY = layout.reduce(
+            (max, item) => Math.max(max, item.y),
+            TreeVisualizer.START_Y,
+        );
+        this.answerRowY = Math.max(540, maxNodeY + 70);
+        this.rebuildRowY = Math.max(530, maxNodeY + 70);
 
         // 1. 连线（在节点下层）
         this.renderEdges(layout);
@@ -578,7 +596,7 @@ export class TreeVisualizer extends BaseVisualizer {
             .attr('fill', (d: BinaryLayoutItem) => this.nodeAuxFill(d.node));
 
         // 4. 位置过渡（enter已在目标位置，此处对已有节点生效）
-        merged.transition('move').duration(220)
+        merged.transition('move').duration(this.duration(220))
             .attr('transform', (d: BinaryLayoutItem) => `translate(${d.x}, ${d.y})`);
 
         // 5. 退出节点直接移除（不做淡出，避免残留透明度为0的节点）
@@ -599,7 +617,24 @@ export class TreeVisualizer extends BaseVisualizer {
      */
     private fitViewBox(points: { x: number; y: number }[]): void {
         if (points.length === 0) {
-            this.svg.attr('viewBox', `0 0 ${TreeVisualizer.CANVAS_W} ${TreeVisualizer.CANVAS_H}`);
+            let x0 = 0;
+            let y0 = 0;
+            let w = TreeVisualizer.CANVAS_W;
+            let h = TreeVisualizer.CANVAS_H;
+            if (this.answerNode || this.rebuildSequence) {
+                const rowBottom = Math.max(this.answerRowY, this.rebuildRowY) + 50;
+                h = Math.max(h, rowBottom);
+                const rowX0 = this.answerRowX0 - 20;
+                const rowX1 = this.answerRowX1 + 20;
+                if (rowX0 < 0) {
+                    w += -rowX0;
+                    x0 = rowX0;
+                }
+                if (rowX1 > x0 + w) {
+                    w = rowX1 - x0;
+                }
+            }
+            this.svg.attr('viewBox', `${x0} ${y0} ${w} ${h}`);
             return;
         }
         const R = TreeVisualizer.NODE_RADIUS;
@@ -612,7 +647,7 @@ export class TreeVisualizer extends BaseVisualizer {
         });
         // 留白：左右 R+30，上方含标签 R+40，下方含附加标签
         let x0 = minX - R - 30;
-        const y0 = minY - R - 40;
+        let y0 = minY - R - 40;
         let w = (maxX - minX) + 2 * (R + 30);
         let h = (maxY - minY) + 2 * R + 85;
         // 最小视图尺寸：节点少时避免被过度放大（圆过大）
@@ -625,8 +660,14 @@ export class TreeVisualizer extends BaseVisualizer {
             x0 = minX - R - 30 - pad;
         }
         // 遍历/子树重构模式：把底部结果行纳入视图（含水平范围，防止标签/首格被裁）
+        if (!this.answerNode && !this.rebuildSequence) {
+            const contentH = (maxY - minY) + 2 * R + 85;
+            if (h > contentH) {
+                y0 -= (h - contentH) / 2;
+            }
+        }
         if (this.answerNode || this.rebuildSequence) {
-            const answerBottom = 540 + 40 + 10;
+            const answerBottom = Math.max(this.answerRowY, this.rebuildRowY) + 50;
             h = Math.max(h, answerBottom - y0);
             const rowX0 = this.answerRowX0 - 20;
             const rowX1 = this.answerRowX1 + 20;
@@ -696,7 +737,7 @@ export class TreeVisualizer extends BaseVisualizer {
 
         enter.merge(lines)
             .transition('tree-edge-move')
-            .duration(220)
+            .duration(this.duration(220))
             .attr('x1', edge => edge.from.x)
             .attr('y1', edge => edge.from.y)
             .attr('x2', edge => edge.to.x)
@@ -743,6 +784,7 @@ export class TreeVisualizer extends BaseVisualizer {
         const items = this.collectTrie();
         const posMap = new Map<number, { x: number; y: number }>();
         if (items.length === 0) {
+            this.mainGroup.selectAll('.tree-node, .trie-edge, .trie-edge-label').remove();
             this.renderAnswerArray();
             this.fitViewBox([]);
             return;
@@ -850,7 +892,7 @@ export class TreeVisualizer extends BaseVisualizer {
         merged.select('.node-value')
             .text((d: TrieLayoutItem) => d.node.pass + '/' + d.node.end);
 
-        merged.transition('move').duration(220).attr('transform', (d: TrieLayoutItem) => {
+        merged.transition('move').duration(this.duration(220)).attr('transform', (d: TrieLayoutItem) => {
             const p = posMap.get(d.node.getId())!;
             return `translate(${p.x}, ${p.y})`;
         });
@@ -875,14 +917,25 @@ export class TreeVisualizer extends BaseVisualizer {
     private handleAnswerArray(node: ArrayNode, method: string, args: unknown[]): void {
         if (this.answerNode !== node || method === '_create') {
             this.answerNode = node;
+            this.answerData = [...node.data];
             this.answerLength = node.data.length;
         } else {
             this.answerLength = Math.max(this.answerLength, node.data.length);
         }
 
-        const highlightIdx = method === '_set_value' ? args[0] as number : null;
+        if (method === '_set_value') {
+            const index = args[0] as number;
+            const value = args[1] as number | null;
+            this.animations.enqueue(() => {
+                this.answerData[index] = value;
+                this.renderAnswerArray(index);
+                this.fitAnswerViewBox();
+            });
+            return;
+        }
+
         this.animations.enqueue(() => {
-            this.renderAnswerArray(highlightIdx);
+            this.renderAnswerArray();
             this.fitAnswerViewBox();
         });
     }
@@ -911,7 +964,7 @@ export class TreeVisualizer extends BaseVisualizer {
             return;
         }
 
-        const data = this.answerNode.data;
+        const data = this.answerData;
         const n = Math.max(this.answerLength, data.length);
         const cellW = 40;
         const cellH = 40;
@@ -919,7 +972,7 @@ export class TreeVisualizer extends BaseVisualizer {
         // 行范围：标签 startX-70 ~ 末格 startX+n*cellW，中心 = startX - 35 + n*cellW/2
         const centerX = 600;
         const startX = centerX + 35 - (n * cellW) / 2;
-        const y = 540;
+        const y = this.answerRowY;
 
         this.answerRowX0 = startX - 70;
         this.answerRowX1 = startX + n * cellW;
@@ -978,7 +1031,7 @@ export class TreeVisualizer extends BaseVisualizer {
                 .interrupt()
                 .attr('fill', COLOR_FLASH)
                 .transition()
-                .duration(180)
+                .duration(this.duration(180))
                 .attr('fill', '#fdf6e3');
         }
 
@@ -1000,7 +1053,7 @@ export class TreeVisualizer extends BaseVisualizer {
         const cellH = 50;
         const centerX = 600;
         const startX = centerX + 35 - (n * cellW) / 2;
-        const y = 530;
+        const y = this.rebuildRowY;
 
         this.answerRowX0 = startX - 80;
         this.answerRowX1 = startX + n * cellW;
@@ -1032,7 +1085,7 @@ export class TreeVisualizer extends BaseVisualizer {
                 .style('font-family', '"JetBrains Mono", SimHei, monospace')
                 .style('fill', '#2d3748')
                 .text(String(v));
-            cell.transition().delay(i * 45).duration(180).style('opacity', 1);
+            cell.transition().delay(this.duration(i * 45)).duration(this.duration(180)).style('opacity', 1);
         });
     }
 
@@ -1042,9 +1095,12 @@ export class TreeVisualizer extends BaseVisualizer {
         this.ds = null;
         this.mode = 'binary';
         this.answerNode = null;
+        this.answerData = [];
         this.answerLength = 0;
         this.answerRowX0 = 0;
         this.answerRowX1 = 0;
+        this.answerRowY = 540;
+        this.rebuildRowY = 530;
         this.rebuildSequence = null;
         this.rebuildSubtreeRoot = null;
         this.rebuildHiddenIds.clear();

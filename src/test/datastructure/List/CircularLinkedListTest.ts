@@ -15,8 +15,8 @@ export async function testCircularLinkedList(): Promise<string> {
         await list.insert(0, i);
     }
     for (let i = 19; i >= 0; --i) {
-        assert(await list.get(0) === i, "头部插入后顺序错误");
-        await list.delete(0);
+        assert(await list.at(0) === i, "头部插入后顺序错误");
+        await list.erase(0);
     }
     assert(list.isEmpty(), "头部删除后应为空");
 

@@ -13,6 +13,23 @@ const ScapegoatTree_Alpha: number = 0.7;
  * 替罪羊树
  */
 export class ScapegoatTree {
+    /**
+     * 设置根节点
+     * @param root 要设置的根节点
+     */
+    public _set_root(root: ScapegoatTreeNode | null): void {
+        this.root = root;
+    }
+
+    /**
+     * 动画效果：清空替罪羊树
+     */
+    public _clear(): void {
+        this.clearVisited();
+        this._set_root(null);
+    }
+
+    /************************************************** */
 
     // 当前被标记为 visited 的节点队列
     private visitedNodes: ScapegoatTreeNode[] = [];
@@ -36,24 +53,6 @@ export class ScapegoatTree {
         node._set_visited(true);
         this.visitedNodes.push(node);
     }
-
-    /**
-     * 设置根节点
-     * @param root 要设置的根节点
-     */
-    public _set_root(root: ScapegoatTreeNode | null): void {
-        this.root = root;
-    }
-
-    /**
-     * 动画效果：清空替罪羊树
-     */
-    public _clear(): void {
-        this.clearVisited();
-        this._set_root(null);
-    }
-
-    /************************************************** */
 
     private root!: ScapegoatTreeNode | null;    // 根节点
 
@@ -197,14 +196,13 @@ export class ScapegoatTree {
         await stepController.wait();
 
         messageController.message("重建子树", MessageType.INFO);
-        const newRoot = this.build(arr, 0, arr.length - 1)!;
-        this._show_rebuilt_subtree(newRoot);
+        node = this.build(arr, 0, arr.length - 1)!;
+        this._show_rebuilt_subtree(node);
         await stepController.wait();
 
         messageController.message("链接子树", MessageType.INFO);
         this._hide_rebuild_sequence();
-        await stepController.wait();
-        return newRoot;
+        return node;
     }
 
     /**
@@ -257,6 +255,7 @@ export class ScapegoatTree {
                 node._set_right(child);
             }
         }
+        this._hide_rebuild_sequence();
 
         this.setVisited(node);
         messageController.message("更新节点" + node.val + "的size", MessageType.INFO);
@@ -294,6 +293,7 @@ export class ScapegoatTree {
             return;
         }
         this._set_root(newRoot);
+        this._hide_rebuild_sequence();
         this.clearVisited();
 
         messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
@@ -367,6 +367,7 @@ export class ScapegoatTree {
                 if (child !== node.right) {
                     node._set_right(child);
                 }
+                this._hide_rebuild_sequence();
             } else {
                 const child = (node.left !== null) ? node.left : node.right;
 
@@ -414,6 +415,7 @@ export class ScapegoatTree {
             return;
         }
         this._set_root(newRoot);
+        this._hide_rebuild_sequence();
         this.clearVisited();
 
         messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);

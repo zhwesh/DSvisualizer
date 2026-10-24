@@ -34,35 +34,45 @@ export class UnionFindSet {
      */
     public async find(x: number): Promise<number | null> {
         if (x < 0 || x >= this.arr.data.length) {
-            messageController.message("节点编号'" + x + "'不存在", MessageType.ERROR);
+            messageController.message("编号越界", MessageType.ERROR);
+            this.arr._clear_visited();
             return null;
         }
 
-        // 找到根节点
         messageController.message(
-            "检查father[" + x + "]与" + x + "是否相等",
+            "比较father[" + x + "]与" + x + "是否相等",
             MessageType.INFO
         );
+        this.arr._clear_visited();
+        this.arr._set_visited(x, true);
+        await stepController.wait();
+
+        // 找到根节点
         if (this.arr.data[x] === x) {
             messageController.message(
-                "father[" + x + "]等于" + x + "，" + x + "为根节点",
+                "father[" + x + "] = " + x + "，" + x + "为根节点",
                 MessageType.INFO
             );
+
             messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
+            this.arr._clear_visited();
             return x;
         }
 
-        await stepController.wait();
         messageController.message(
-            "father[" + x + "] != " + x + "，递归查找",
+            "father[" + x + "] ≠ " + x + "，递归查找",
             MessageType.INFO
         );
+        await stepController.wait();
         const root = await this.find(this.arr.data[x]!);
 
-        await stepController.wait();
         messageController.message("路径压缩：将father[" + x + "]直接设为" + root, MessageType.INFO);
+        this.arr._clear_visited();
+        this.arr._set_visited(x, true);
+        await stepController.wait();
         this.arr._set_value(x, root);
 
+        this.arr._clear_visited();
         return root;
     }
 
@@ -72,40 +82,41 @@ export class UnionFindSet {
      * @param v 元素编号
      */
     public async union(u: number, v: number): Promise<void> {
-        await stepController.wait();
         messageController.message("查找节点" + u + "所在集合的根节点", MessageType.INFO);
         let fu = await this.find(u);
+        await stepController.wait();
         if (fu === null) {
             return;
         }
 
-        await stepController.wait();
         messageController.message("查找节点" + v + "所在集合的根节点", MessageType.INFO);
         let fv = await this.find(v);
+        await stepController.wait();
         if (fv === null) {
             return;
         }
 
         if (fu === fv) {
             messageController.message(
-                "节点" + u + "和节点" + v + "已属于同一集合",
+                "节点" + u + "," + v + "已在同一集合",
                 MessageType.WARNING
             );
             return;
         }
 
-        await stepController.wait();
         messageController.message(
-            "按集合大小合并：将" + fu + "的父节点设为" + fv + "，并更新集合大小",
+            "按集合大小合并",
             MessageType.INFO
         );
-        if (this.arr.sz[fu] < this.arr.sz[fv]) {
+        if (this.arr.sz[fu]! > this.arr.sz[fv]!) {
             const tmp = fu;
             fu = fv;
             fv = tmp;
         }
         this.arr._set_value(fu, fv);
         this.arr._set_size(fv, this.arr.sz[fv]! + this.arr.sz[fu]!);
+        this.arr._set_size(fu, null);
+        await stepController.wait();
 
         messageController.message("合并完成", MessageType.SUCCESS);
     }
@@ -116,17 +127,15 @@ export class UnionFindSet {
      * @returns x所在集合的大小（编号不存在时返回0）
      */
     public async getSize(x: number): Promise<number> {
-        await stepController.wait();
         messageController.message("查找节点" + x + "所在集合的根节点", MessageType.INFO);
         const root = await this.find(x);
+        await stepController.wait();
         if (root === null) {
             return 0;
         }
 
-        await stepController.wait();
-        const size = this.arr.sz[root]!;
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
-        return size;
+        return this.arr.sz[root]!;
     }
 
     /**
@@ -138,17 +147,18 @@ export class UnionFindSet {
     public async inSameSet(u: number, v: number): Promise<boolean> {
         messageController.message("查找节点" + u + "所在集合的根节点", MessageType.INFO);
         const fu = await this.find(u);
+        await stepController.wait();
         if (fu === null) {
             return false;
         }
 
         messageController.message("查找节点" + v + "所在集合的根节点", MessageType.INFO);
         const fv = await this.find(v);
+        await stepController.wait();
         if (fv === null) {
             return false;
         }
 
-        await stepController.wait();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return fu === fv;
     }

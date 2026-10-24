@@ -217,27 +217,7 @@ export class GraphVisualizer extends BaseVisualizer {
             simulation.tick();
         }
 
-        // 归一化到画布中央，节点极多时整体缩小
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        nodes.forEach(node => {
-            minX = Math.min(minX, node.x);
-            maxX = Math.max(maxX, node.x);
-            minY = Math.min(minY, node.y);
-            maxY = Math.max(maxY, node.y);
-        });
-        const contentW = Math.max(1, maxX - minX);
-        const contentH = Math.max(1, maxY - minY);
-        const scale = Math.min(
-            1,
-            (GraphVisualizer.CANVAS_W - 180) / contentW,
-            (GraphVisualizer.CANVAS_H - 140) / contentH,
-        );
-        const midX = (minX + maxX) / 2;
-        const midY = (minY + maxY) / 2;
-        this.pos = nodes.map(node => ({
-            x: cx + (node.x - midX) * scale,
-            y: cy + (node.y - midY) * scale,
-        }));
+        this.pos = nodes.map(node => ({ x: node.x, y: node.y }));
     }
 
     /**
@@ -266,6 +246,11 @@ export class GraphVisualizer extends BaseVisualizer {
         const ds = this.ds;
         if (!ds) return;
         const edges = this.collectEdges();
+        const edgeKeys = new Set(edges.map(edge => edge.key));
+        const weightCounts = new Map<number, number>();
+        for (const edge of edges) {
+            weightCounts.set(edge.w, (weightCounts.get(edge.w) ?? 0) + 1);
+        }
         const R = GraphVisualizer.NODE_R;
 
         // 已放置的权值标签与节点区域，用于贪心避让，避免多个数字叠在中心
@@ -286,18 +271,26 @@ export class GraphVisualizer extends BaseVisualizer {
             a.y - a.h / 2 > b.y + b.h / 2
         );
 
+        const directed = !(ds instanceof UndirectedGraphNode);
+
         edges.forEach((e, edgeIndex) => {
             const p1 = this.pos[e.u], p2 = this.pos[e.v];
             if (!p1 || !p2) return;
-            // 缩短到节点圆边缘
             const dx = p2.x - p1.x, dy = p2.y - p1.y;
             const len = Math.hypot(dx, dy) || 1;
-            const x1 = p1.x + (dx / len) * R;
-            const y1 = p1.y + (dy / len) * R;
-            const x2 = p2.x - (dx / len) * R;
-            const y2 = p2.y - (dy / len) * R;
+            const ux = dx / len;
+            const uy = dy / len;
+            const nx = -uy;
+            const ny = ux;
+            // 双向边错开绘制，避免两条反向边完全重合
+            const reciprocal = directed && edgeKeys.has(`${e.v},${e.u}`);
+            const lineOffset = reciprocal ? 9 : 0;
+            const trim = Math.sqrt(Math.max(0, R * R - lineOffset * lineOffset));
+            const x1 = p1.x + ux * trim + nx * lineOffset;
+            const y1 = p1.y + uy * trim + ny * lineOffset;
+            const x2 = p2.x - ux * trim + nx * lineOffset;
+            const y2 = p2.y - uy * trim + ny * lineOffset;
 
-            const directed = !(ds instanceof UndirectedGraphNode);
             const color = this.edgeStroke(ds.edgeColor?.[e.u]?.get(e.v));
             const g = this.mainGroup.append('g').attr('class', 'graph-edge');
             g.append('line')
@@ -309,29 +302,43 @@ export class GraphVisualizer extends BaseVisualizer {
                 .attr('stroke-width', 2.5)
                 .attr('marker-end', directed ? this.markerFor(color) : null);
 
-            // 沿边尝试多个位置：中点、偏向起点/终点、上下左右偏移，避开节点和已有标签
-            const nx = -dy / len;
-            const ny = dx / len;
+            // 权值不重复时优先放在边线上；重复权值则向边线两侧避让
             const text = String(e.w);
             const labelW = Math.max(22, text.length * 10 + 12);
             const labelH = 26;
-            const candidates = [
-                { t: 0.5, offset: 0 },
-                { t: 0.5, offset: 20 },
-                { t: 0.5, offset: -20 },
-                { t: 0.4, offset: 14 },
-                { t: 0.6, offset: -14 },
-                { t: 0.34, offset: -22 },
-                { t: 0.66, offset: 22 },
-                { t: 0.5, offset: 36 },
-                { t: 0.5, offset: -36 },
-            ];
-            let labelX = (p1.x + p2.x) / 2 + 8;
-            let labelY = (p1.y + p2.y) / 2 - 8;
+            const baseT = reciprocal ? (e.u < e.v ? 0.4 : 0.6) : 0.5;
+            const duplicate = (weightCounts.get(e.w) ?? 0) > 1;
+            const candidates: { t: number; offset: number }[] = [];
+            if (duplicate) {
+                candidates.push(
+                    { t: baseT, offset: 18 },
+                    { t: baseT, offset: -18 },
+                    { t: baseT, offset: 28 },
+                    { t: baseT, offset: -28 },
+                    { t: 0.4, offset: 16 },
+                    { t: 0.6, offset: -16 },
+                    { t: 0.4, offset: -16 },
+                    { t: 0.6, offset: 16 },
+                    { t: baseT, offset: 0 },
+                );
+            } else {
+                for (const t of [baseT, 0.42, 0.58, 0.34, 0.66, 0.28, 0.72]) {
+                    candidates.push({ t, offset: 0 });
+                }
+                candidates.push(
+                    { t: baseT, offset: 18 },
+                    { t: baseT, offset: -18 },
+                    { t: baseT, offset: 28 },
+                    { t: baseT, offset: -28 },
+                );
+            }
+
+            let labelX = p1.x + dx * baseT + nx * lineOffset;
+            let labelY = p1.y + dy * baseT + ny * lineOffset;
             let found = false;
             for (const candidate of candidates) {
-                const lx = p1.x + dx * candidate.t + nx * candidate.offset;
-                const ly = p1.y + dy * candidate.t + ny * candidate.offset;
+                const lx = p1.x + dx * candidate.t + nx * (lineOffset + candidate.offset);
+                const ly = p1.y + dy * candidate.t + ny * (lineOffset + candidate.offset);
                 const box = { x: lx, y: ly, w: labelW, h: labelH };
                 if (nodeBoxes.some(nodeBox => overlaps(box, nodeBox))) continue;
                 if (placed.some(other => overlaps(box, other))) continue;
@@ -343,9 +350,9 @@ export class GraphVisualizer extends BaseVisualizer {
             }
             if (!found) {
                 // 极端情况下使用带固定偏移的中点，至少不会完全重叠
-                const fallbackOffset = ((edgeIndex % 3) - 1) * 24;
-                labelX = (p1.x + p2.x) / 2 + nx * fallbackOffset;
-                labelY = (p1.y + p2.y) / 2 + ny * fallbackOffset;
+                const fallbackOffset = lineOffset + ((edgeIndex % 3) - 1) * 24;
+                labelX = p1.x + dx * baseT + nx * fallbackOffset;
+                labelY = p1.y + dy * baseT + ny * fallbackOffset;
                 placed.push({ x: labelX, y: labelY, w: labelW, h: labelH });
             }
 

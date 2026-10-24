@@ -23,6 +23,29 @@ export class SegmentTree {
     private root!: SegmentTreeNode | null;  // 根节点
     private n!: number;                     // 元素个数
 
+    // 当前被标记为 visited 的节点队列
+    private visitedNodes: SegmentTreeNode[] = [];
+
+    /**
+     * 清除队列中所有节点的 visited 标记。
+     */
+    private clearVisited(): void {
+        for (const node of this.visitedNodes) {
+            node._set_visited(false);
+        }
+        this.visitedNodes.length = 0;
+    }
+
+    /**
+     * 标记当前访问节点，并清除之前的 visited 标记。
+     * @param node 当前访问节点
+     */
+    private setVisited(node: SegmentTreeNode): void {
+        this.clearVisited();
+        node._set_visited(true);
+        this.visitedNodes.push(node);
+    }
+
     /**
      * 根据初始数组建树
      * @param nums 初始数组
@@ -80,7 +103,7 @@ export class SegmentTree {
      * @param R 当前区间右端点
      * @param node 当前节点
      */
-    private async down(L: number, R: number, node: SegmentTreeNode): Promise<void> {
+    private down(L: number, R: number, node: SegmentTreeNode): void {
         if (node.lazy === 0) {
             return;
         }
@@ -90,11 +113,6 @@ export class SegmentTree {
         const left = node.left!;
         const right = node.right!;
 
-        await stepController.wait();
-        messageController.message(
-            "将懒标记'" + lazy + "'下传给左右孩子",
-            MessageType.INFO
-        );
         left._set_sum(left.sum! + (mid - L + 1) * lazy);
         left._set_lazy(left.lazy! + lazy);
         right._set_sum(right.sum! + (R - mid) * lazy);
@@ -115,12 +133,17 @@ export class SegmentTree {
         l: number, r: number, val: number,
         L: number, R: number, node: SegmentTreeNode
     ): Promise<void> {
+        messageController.message(
+            "当前区间：[" + L + "," + R + "]",
+            MessageType.INFO
+        );
+        this.setVisited(node);
+        await stepController.wait();
+        
         if (l <= L && R <= r) {
-            await stepController.wait();
             messageController.message(
                 "区间[" + L + "," + R + "]完全包含于[" + l + "," + r +
-                    "]，节点值增加" + (R - L + 1) + "*" + val + "=" +
-                    (R - L + 1) * val + "，懒标记增加" + val,
+                    "]，节点值增加" + (R - L + 1) * val + "，懒标记增加" + val,
                 MessageType.INFO
             );
             node._set_sum(node.sum! + (R - L + 1) * val);
@@ -128,20 +151,25 @@ export class SegmentTree {
             return;
         }
 
-        await this.down(L, R, node);
+        messageController.message("更新懒标记", MessageType.INFO);
+        this.down(L, R, node);
+        await stepController.wait();
+
         const mid = L + ((R - L) >> 1);
         if (l <= mid) {
             await this.addRange(l, r, val, L, mid, node.left!);
+            await stepController.wait();
         }
         if (r > mid) {
             await this.addRange(l, r, val, mid + 1, R, node.right!);
+            await stepController.wait();
         }
 
-        await stepController.wait();
         messageController.message(
             "用左右孩子的值更新节点[" + L + "," + R + "]",
             MessageType.INFO
         );
+        this.setVisited(node);
         node._set_sum(node.left!.sum! + node.right!.sum!);
     }
 
@@ -160,13 +188,10 @@ export class SegmentTree {
             return;
         }
 
-        await stepController.wait();
-        messageController.message(
-            "令区间[" + l + "," + r + "]中的每个元素增加" + val,
-            MessageType.INFO
-        );
         await this.addRange(l, r, val, 0, this.n - 1, this.root!);
+        await stepController.wait();
 
+        this.clearVisited();
         messageController.message(SuccessMessage.SET_SUCCESS, MessageType.SUCCESS);
     }
 
@@ -185,16 +210,18 @@ export class SegmentTree {
         node: SegmentTreeNode
     ): Promise<number> {
         if (l <= L && R <= r) {
-            await stepController.wait();
             messageController.message(
                 "区间[" + L + "," + R + "]完全包含于[" + l + "," +
-                    r + "]，返回当前区间和" + node.sum,
+                    r + "]，返回当前区间和",
                 MessageType.INFO
             );
             return node.sum!;
         }
 
-        await this.down(L, R, node);
+        messageController.message("更新懒标记", MessageType.INFO);
+        this.down(L, R, node);
+        await stepController.wait();
+
         const mid = L + ((R - L) >> 1);
         let res = 0;
         if (l <= mid) {
@@ -203,6 +230,7 @@ export class SegmentTree {
         if (r > mid) {
             res += await this.queryRange(l, r, mid + 1, R, node.right!);
         }
+
         return res;
     }
 
@@ -221,13 +249,14 @@ export class SegmentTree {
             return null;
         }
 
-        await stepController.wait();
         messageController.message(
             "查询区间[" + l + "," + r + "]的元素和",
             MessageType.INFO
         );
         const res = await this.queryRange(l, r, 0, this.n - 1, this.root!);
+        await stepController.wait();
 
+        this.clearVisited();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
         return res;
     }

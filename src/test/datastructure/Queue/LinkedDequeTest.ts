@@ -18,10 +18,10 @@ export async function testLinkedDeque(): Promise<string> {
         }
     });
     const deque = create(LinkedDeque);
-    await deque.pushLast(1);
-    await deque.pushFirst(2);
-    await deque.popFirst();
-    await deque.popLast();
+    await deque.pushBack(1);
+    await deque.pushFront(2);
+    await deque.popFront();
+    await deque.popBack();
     assert(deleted.length === 2, "应删除2个节点，实际为" + deleted.length);
     for (const node of deleted) {
         assert(node.val === null && node.next === null && node.last === null, "已删除节点应清空val/next/last");

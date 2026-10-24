@@ -72,8 +72,8 @@ export async function testBinaryTreeTraversal(): Promise<string> {
     // 收集遍历结果（answer数组的_add_value调用）
     const answer: number[] = [];
     registerOpHook((_target, method, args) => {
-        if (method === "_add_value") {
-            answer.push(args[0]);
+        if (method === "_set_value" && args[1] !== null) {
+            answer.push(args[1] as number);
         }
     });
 

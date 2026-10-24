@@ -15,7 +15,7 @@ export class ArrayQueue {
      */
     public _clear(): void {
         messageController.message("清除所有元素", MessageType.INFO);
-        for (let i = 0; i < this.arr.data.length; i++) {
+        for (let i = this.arr.head; i < this.arr.tail; ++i) {
             this.arr._set_value(i, null);
         }
 
@@ -49,7 +49,7 @@ export class ArrayQueue {
         await stepController.wait();
         messageController.message("拷贝原数组数据", MessageType.INFO);
         for (let i = 0; i < len; ++i) {
-            tmp._swap_value(i, this.arr, this.arr.head! + i);
+            tmp._swap_value(i, this.arr, this.arr.head + i);
         }
 
         await stepController.wait();
@@ -60,14 +60,29 @@ export class ArrayQueue {
         tmp._delete();
     }
 
+    /**
+     * 移动元素到数组头部
+     */
+    private async move(): Promise<void> {
+        messageController.message("交换元素", MessageType.INFO);
+        for (let i = this.arr.head; i < this.arr.tail; ++i) {
+            this.arr._swap_value(i - this.arr.head, this.arr, i);
+        }
+        await stepController.wait();
+
+        messageController.message("设置指针", MessageType.INFO);
+        this.arr._set_tail(this.size());
+        this.arr._set_head(0);
+    }
+
     // 是否为空
     public isEmpty(): boolean {
-        return this.arr.head! === this.arr.tail!;
+        return this.arr.head === this.arr.tail;
     }
 
     // 元素个数
     public size(): number {
-        return this.arr.tail! - this.arr.head!;
+        return this.arr.tail - this.arr.head;
     }
 
     /**
@@ -82,7 +97,7 @@ export class ArrayQueue {
 
         await stepController.wait();
         messageController.message(SuccessMessage.GET_SUCCESS, MessageType.SUCCESS);
-        return this.arr.data[this.arr.head!];
+        return this.arr.data[this.arr.head];
     }
 
     /**
@@ -90,15 +105,20 @@ export class ArrayQueue {
      * @param val 新元素
      */
     public async push(val: number): Promise<void> {
-        if (this.arr.tail! === this.arr.data.length) {
+        if (this.arr.tail === this.arr.data.length) {
             await stepController.wait();
-            messageController.message("队列容量已满，扩容", MessageType.INFO);
-            await this.expand();
+            if (this.size() * 2 <= this.arr.data.length) {
+                messageController.message("队尾指针即将越界，移动元素", MessageType.INFO);
+                await this.move();
+            } else {
+                messageController.message("队尾指针即将越界，扩容", MessageType.INFO);
+                await this.expand();
+            }
         }
 
         await stepController.wait();
-        this.arr._set_value(this.arr.tail!, val);
-        this.arr._set_tail(this.arr.tail! + 1);
+        this.arr._set_value(this.arr.tail, val);
+        this.arr._set_tail(this.arr.tail + 1);
 
         messageController.message(SuccessMessage.INSERT_SUCCESS, MessageType.SUCCESS);
     }
@@ -114,13 +134,13 @@ export class ArrayQueue {
 
         await stepController.wait();
         messageController.message(SuccessMessage.DELETE_SUCCESS, MessageType.SUCCESS);
-        this.arr._set_value(this.arr.head!, null);
-        this.arr._set_head(this.arr.head! + 1);
+        this.arr._set_value(this.arr.head, null);
+        this.arr._set_head(this.arr.head + 1);
     }
 
     // 清除所有元素
     public clear(): void {
-        if (this.arr.head! === this.arr.tail!) {
+        if (this.arr.head === this.arr.tail) {
             messageController.message("队列已经为空", MessageType.WARNING);
             return;
         }

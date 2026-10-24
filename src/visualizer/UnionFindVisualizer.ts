@@ -21,16 +21,14 @@ const COLOR_NODE_FILL = '#ffffff';
 const COLOR_ROOT_FILL = '#e8f1ff';
 const COLOR_NODE_STROKE = '#667085';
 const COLOR_EDGE = '#98a2b3';
-const COLOR_ACTIVE = '#f59e0b';
 const COLOR_TEXT = '#2d3748';
 const COLOR_MUTED = '#667085';
 const COLOR_CELL_FILL = '#ffffff';
-const COLOR_CELL_ACTIVE = '#fef3c7';
 const COLOR_CELL_STROKE = '#98a2b3';
+const COLOR_VISIT_RING = '#2b6cb0';
 
 export class UnionFindVisualizer extends BaseVisualizer {
     private node: UnionFindSetNode | null = null;
-    private highlight: { row: UfRow; index: number } | null = null;
     private edgeLayer!: SvgGroup;
     private nodeLayer!: SvgGroup;
     private arrayLayer!: SvgGroup;
@@ -53,7 +51,7 @@ export class UnionFindVisualizer extends BaseVisualizer {
         this.ensureArrowMarker();
     }
 
-    onOp(node: object, method: string, args: unknown[]): void {
+    onOp(node: object, method: string, _args: unknown[]): void {
         if (!(node instanceof UnionFindSetNode)) {
             return;
         }
@@ -61,16 +59,15 @@ export class UnionFindVisualizer extends BaseVisualizer {
         switch (method) {
             case '_create':
                 this.node = node;
-                this.highlight = null;
                 this.enqueueRender(0);
                 break;
             case '_set_value':
-                this.highlight = { row: 'father', index: args[0] as number };
-                this.enqueueRender(260);
-                break;
             case '_set_size':
-                this.highlight = { row: 'sz', index: args[0] as number };
-                this.enqueueRender(260);
+                this.enqueueRender(0);
+                break;
+            case '_set_visited':
+            case '_clear_visited':
+                this.enqueueRender(0);
                 break;
             default:
                 break;
@@ -123,7 +120,7 @@ export class UnionFindVisualizer extends BaseVisualizer {
         const edges = this.collectEdges(father, positions);
 
         this.renderEdges(edges, positions);
-        this.renderNodes(positions, father, node.sz, n);
+        this.renderNodes(positions, father, node.sz, node.visited, n);
 
         const maxDepth = positions.size === 0
             ? 0
@@ -221,7 +218,7 @@ export class UnionFindVisualizer extends BaseVisualizer {
             .attr('marker-end', 'url(#uf-edge-arrow)');
 
         const merged = enter.merge(lines);
-        merged.transition('uf-edge-move').duration(220)
+        merged.transition('uf-edge-move').duration(this.duration(220))
             .attr('x1', edge => this.edgeEnd(edge.child, edge.parent, positions).x1)
             .attr('y1', edge => this.edgeEnd(edge.child, edge.parent, positions).y1)
             .attr('x2', edge => this.edgeEnd(edge.child, edge.parent, positions).x2)
@@ -255,7 +252,8 @@ export class UnionFindVisualizer extends BaseVisualizer {
     private renderNodes(
         positions: Map<number, UfPoint>,
         father: number[],
-        size: number[],
+        size: (number | null)[],
+        visited: boolean[],
         n: number,
     ): void {
         const indexes = Array.from({ length: n }, (_, i) => i);
@@ -271,6 +269,16 @@ export class UnionFindVisualizer extends BaseVisualizer {
             });
 
         enter.append('circle')
+            .attr('class', 'uf-node-visit-ring')
+            .attr('r', UnionFindVisualizer.NODE_RADIUS + 5)
+            .attr('fill', 'none')
+            .attr('stroke', COLOR_VISIT_RING)
+            .attr('stroke-width', 3)
+            .style('opacity', 0)
+            .style('pointer-events', 'none');
+
+        enter.append('circle')
+            .attr('class', 'uf-node-main')
             .attr('r', UnionFindVisualizer.NODE_RADIUS)
             .attr('stroke-width', 1.8);
 
@@ -292,21 +300,19 @@ export class UnionFindVisualizer extends BaseVisualizer {
             .style('fill', COLOR_MUTED);
 
         const merged = enter.merge(groups);
-        merged.transition('uf-node-move').duration(220)
+        merged.transition('uf-node-move').duration(this.duration(220))
             .attr('transform', index => {
                 const point = positions.get(index);
                 return point ? `translate(${point.x}, ${point.y})` : '';
             });
 
-        merged.select('circle')
+        merged.select('.uf-node-main')
             .attr('fill', index => father[index] === index ? COLOR_ROOT_FILL : COLOR_NODE_FILL)
-            .attr('stroke', index => {
-                if (this.highlight && this.highlight.index === index) return COLOR_ACTIVE;
-                return COLOR_NODE_STROKE;
-            })
-            .attr('stroke-width', index => {
-                return this.highlight && this.highlight.index === index ? 3 : 1.8;
-            });
+            .attr('stroke', COLOR_NODE_STROKE)
+            .attr('stroke-width', 1.8);
+
+        merged.select('.uf-node-visit-ring')
+            .style('opacity', index => visited[index] ? 1 : 0);
 
         merged.select('.uf-node-index')
             .text(index => String(index));
@@ -352,17 +358,13 @@ export class UnionFindVisualizer extends BaseVisualizer {
             .style('fill', COLOR_TEXT);
 
         const merged = enter.merge(cells);
-        merged.transition('uf-cell-move').duration(200)
+        merged.transition('uf-cell-move').duration(this.duration(200))
             .attr('transform', index =>
                 `translate(${startX + index * UnionFindVisualizer.CELL_WIDTH}, ${y})`,
             );
 
         merged.select('rect')
-            .attr('fill', index => {
-                return this.highlight?.row === row && this.highlight.index === index
-                    ? COLOR_CELL_ACTIVE
-                    : COLOR_CELL_FILL;
-            });
+            .attr('fill', COLOR_CELL_FILL);
 
         merged.select('.uf-cell-value')
             .text(index => values[index] === null || values[index] === undefined
@@ -438,7 +440,6 @@ export class UnionFindVisualizer extends BaseVisualizer {
     clear(): void {
         super.clear();
         this.node = null;
-        this.highlight = null;
         this.edgeLayer = this.mainGroup.append('g').attr('class', 'uf-edge-layer');
         this.nodeLayer = this.mainGroup.append('g').attr('class', 'uf-node-layer');
         this.arrayLayer = this.mainGroup.append('g').attr('class', 'uf-array-layer');

@@ -203,10 +203,10 @@ export function randomArrays(count: number, maxLength: number, minVal: number, m
 export interface TestableList {
     isEmpty(): boolean;
     size(): number;
-    get(idx: number): Promise<number | null>;
-    set(idx: number, val: number): Promise<void>;
+    at(idx: number): Promise<number | null>;
+    update(idx: number, val: number): Promise<void>;
     insert(idx: number, val: number): Promise<void>;
-    delete(idx: number): Promise<void>;
+    erase(idx: number): Promise<void>;
     clear(): void;
 }
 
@@ -225,7 +225,7 @@ export interface TestableSorter {
 async function collect(list: TestableList): Promise<number[]> {
     const data: number[] = [];
     for (let i = 0; i < list.size(); ++i) {
-        data.push((await list.get(i))!);
+        data.push((await list.at(i))!);
     }
     return data;
 }
@@ -239,16 +239,16 @@ export async function checkListModel(list: TestableList): Promise<string> {
     // 初始状态
     assert(list.isEmpty(), "初始表应为空");
     assert(list.size() === 0, "初始表大小应为0");
-    assert(await list.get(0) === null, "空表查询应返回null");
+    assert(await list.at(0) === null, "空表查询应返回null");
 
     // 基本增删改查
     await list.insert(0, 1);
     await list.insert(1, 2);
     await list.insert(1, 3);
     assertArrayEqual(await collect(list), [1, 3, 2], "基本插入");
-    await list.set(1, 4);
-    assert(await list.get(1) === 4, "基本修改");
-    await list.delete(1);
+    await list.update(1, 4);
+    assert(await list.at(1) === 4, "基本修改");
+    await list.erase(1);
     assertArrayEqual(await collect(list), [1, 2], "基本删除");
     assert(list.size() === 2 && !list.isEmpty(), "基本操作后大小错误");
 
@@ -257,11 +257,11 @@ export async function checkListModel(list: TestableList): Promise<string> {
     clearMessages();
     await list.insert(-1, 9);
     await list.insert(list.size() + 1, 9);
-    await list.delete(-1);
-    await list.delete(list.size());
-    assert(await list.get(-1) === null, "越界查询应返回null");
-    assert(await list.get(list.size()) === null, "越界查询应返回null");
-    await list.set(list.size(), 9);
+    await list.erase(-1);
+    await list.erase(list.size());
+    assert(await list.at(-1) === null, "越界查询应返回null");
+    assert(await list.at(list.size()) === null, "越界查询应返回null");
+    await list.update(list.size(), 9);
     const errors = getMessages().slice();
     assertArrayEqual(await collect(list), before, "越界操作不应改变数据");
     assert(errors.length === 7, "越界操作应提示7条错误，实际为" + errors.length);
@@ -281,18 +281,18 @@ export async function checkListModel(list: TestableList): Promise<string> {
             ++insertCount;
         } else if (op === 1) {
             const idx = randomInt(0, model.length - 1);
-            await list.delete(idx);
+            await list.erase(idx);
             model.splice(idx, 1);
             ++deleteCount;
         } else if (op === 2) {
             const idx = randomInt(0, model.length - 1);
             const val = randomInt(-100, 100);
-            await list.set(idx, val);
+            await list.update(idx, val);
             model[idx] = val;
             ++setCount;
         } else {
             const idx = randomInt(0, model.length - 1);
-            assert(await list.get(idx) === model[idx], "随机对拍：查询下标" + idx);
+            assert(await list.at(idx) === model[idx], "随机对拍：查询下标" + idx);
             ++getCount;
         }
         if (model.length > maxLength) {
@@ -377,12 +377,12 @@ export interface TestableStackQueue {
 export interface TestableDeque {
     isEmpty(): boolean;
     size(): number;
-    getFirst(): Promise<number | null>;
-    getLast(): Promise<number | null>;
-    pushFirst(val: number): Promise<void>;
-    pushLast(val: number): Promise<void>;
-    popFirst(): Promise<void>;
-    popLast(): Promise<void>;
+    getFront(): Promise<number | null>;
+    getBack(): Promise<number | null>;
+    pushFront(val: number): Promise<void>;
+    pushBack(val: number): Promise<void>;
+    popFront(): Promise<void>;
+    popBack(): Promise<void>;
     clear(): void;
 }
 
@@ -497,43 +497,43 @@ export async function checkDequeModel(deque: TestableDeque): Promise<string> {
 
     // 空队列操作
     clearMessages();
-    assert(await deque.getFirst() === null, "空队列取队首应返回null");
-    assert(await deque.getLast() === null, "空队列取队尾应返回null");
-    await deque.popFirst();
-    await deque.popLast();
+    assert(await deque.getFront() === null, "空队列取队首应返回null");
+    assert(await deque.getBack() === null, "空队列取队尾应返回null");
+    await deque.popFront();
+    await deque.popBack();
     assert(deque.isEmpty() && deque.size() === 0, "空队列弹出后仍应为空");
     const errors = getMessages().slice();
     assert(errors.length === 4 && errors.every((message) => message.type === MessageType.ERROR), "空队列操作应提示4条错误");
 
     // 随机对拍
     const model: number[] = [];
-    let pushFirstCount = 0, pushLastCount = 0, popFirstCount = 0, popLastCount = 0, getCount = 0;
+    let pushFrontCount = 0, pushBackCount = 0, popFrontCount = 0, popBackCount = 0, getCount = 0;
     let maxLength = 0;
     for (let step = 0; step < 300; ++step) {
         const op = randomInt(0, 5);
         if (op === 0 || model.length === 0) {
             const val = randomInt(-100, 100);
-            await deque.pushLast(val);
+            await deque.pushBack(val);
             model.push(val);
-            ++pushLastCount;
+            ++pushBackCount;
         } else if (op === 1) {
             const val = randomInt(-100, 100);
-            await deque.pushFirst(val);
+            await deque.pushFront(val);
             model.unshift(val);
-            ++pushFirstCount;
+            ++pushFrontCount;
         } else if (op === 2) {
-            await deque.popFirst();
+            await deque.popFront();
             model.shift();
-            ++popFirstCount;
+            ++popFrontCount;
         } else if (op === 3) {
-            await deque.popLast();
+            await deque.popBack();
             model.pop();
-            ++popLastCount;
+            ++popBackCount;
         } else if (op === 4) {
-            assert(await deque.getFirst() === model[0], "随机对拍：取队首错误");
+            assert(await deque.getFront() === model[0], "随机对拍：取队首错误");
             ++getCount;
         } else {
-            assert(await deque.getLast() === model[model.length - 1], "随机对拍：取队尾错误");
+            assert(await deque.getBack() === model[model.length - 1], "随机对拍：取队尾错误");
             ++getCount;
         }
         if (model.length > maxLength) {
@@ -541,8 +541,8 @@ export async function checkDequeModel(deque: TestableDeque): Promise<string> {
         }
         assert(deque.size() === model.length, "随机对拍：第" + step + "步后大小错误");
         if (model.length > 0) {
-            assert(await deque.getFirst() === model[0], "随机对拍：第" + step + "步后队首错误");
-            assert(await deque.getLast() === model[model.length - 1], "随机对拍：第" + step + "步后队尾错误");
+            assert(await deque.getFront() === model[0], "随机对拍：第" + step + "步后队首错误");
+            assert(await deque.getBack() === model[model.length - 1], "随机对拍：第" + step + "步后队尾错误");
         }
     }
 
@@ -554,8 +554,8 @@ export async function checkDequeModel(deque: TestableDeque): Promise<string> {
     const warnings = getMessages();
     assert(warnings.length === 1 && warnings[0].type === MessageType.WARNING, "空队列clear应提示警告");
 
-    return "随机对拍300次操作（首插" + pushFirstCount + "、尾插" + pushLastCount + "、首弹" + popFirstCount +
-        "、尾弹" + popLastCount + "、取首尾" + getCount + "），最大长度" + maxLength + "；空队列用例4项，清空用例2项";
+    return "随机对拍300次操作（首插" + pushFrontCount + "、尾插" + pushBackCount + "、首弹" + popFrontCount +
+        "、尾弹" + popBackCount + "、取首尾" + getCount + "），最大长度" + maxLength + "；空队列用例4项，清空用例2项";
 }
 
 /**

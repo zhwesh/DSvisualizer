@@ -15,7 +15,7 @@ export class ArrayDeque {
      */
     public _clear(): void {
         messageController.message("清除所有元素", MessageType.INFO);
-        for (let i = 0; i < this.arr.data.length; i++) {
+        for (let i = this.arr.head!; i < this.arr.tail!; ++i) {
             this.arr._set_value(i, null);
         }
 
@@ -61,6 +61,22 @@ export class ArrayDeque {
         tmp._delete();
     }
 
+    // 将元素移动到数组中间
+    private async move(): Promise<void> {
+        const sz = this.size();
+        const start = (this.arr.data.length - sz) >> 1;
+
+        messageController.message("移动元素到中间", MessageType.INFO);
+        for (let i = 0; i < sz; ++i) {
+            this.arr._swap_value(start + i, this.arr, this.arr.head! + i);
+        }
+        await stepController.wait();
+
+        messageController.message("设置首尾指针", MessageType.INFO);
+        this.arr._set_head(start);
+        this.arr._set_tail(start + sz);
+    }
+
     // 是否为空
     public isEmpty(): boolean {
         return this.arr.head! === this.arr.tail!;
@@ -75,7 +91,7 @@ export class ArrayDeque {
      * 获取队首
      * @returns 队首元素
      */
-    public async getFirst(): Promise<number | null> {
+    public async getFront(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return null;
@@ -90,7 +106,7 @@ export class ArrayDeque {
      * 获取队尾
      * @returns 队尾元素
      */
-    public async getLast(): Promise<number | null> {
+    public async getBack(): Promise<number | null> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return null;
@@ -105,11 +121,16 @@ export class ArrayDeque {
      * 将val添加至队首
      * @param val 新数据
      */
-    public async pushFirst(val: number): Promise<void> {
+    public async pushFront(val: number): Promise<void> {
         if (this.arr.head! === 0) {
             await stepController.wait();
-            messageController.message("扩容", MessageType.INFO);
-            await this.expand();
+            if (this.size() * 3 <= this.arr.data.length) {
+                messageController.message("队首指针即将越界，移动元素到中间", MessageType.INFO);
+                await this.move();
+            } else {
+                messageController.message("队首指针即将越界，扩容", MessageType.INFO);
+                await this.expand();
+            }
         }
 
         await stepController.wait();
@@ -123,11 +144,16 @@ export class ArrayDeque {
      * 将val添加至队尾
      * @param val 新元素
      */
-    public async pushLast(val: number): Promise<void> {
+    public async pushBack(val: number): Promise<void> {
         if (this.arr.tail! === this.arr.data.length) {
             await stepController.wait();
-            messageController.message("队列容量已满，扩容", MessageType.INFO);
-            await this.expand();
+            if (this.size() * 3 <= this.arr.data.length) {
+                messageController.message("队尾指针即将越界，移动元素到中间", MessageType.INFO);
+                await this.move();
+            } else {
+                messageController.message("队尾指针即将越界，扩容", MessageType.INFO);
+                await this.expand();
+            }
         }
 
         await stepController.wait();
@@ -140,7 +166,7 @@ export class ArrayDeque {
     /**
      * 弹出队首
      */
-    public async popFirst(): Promise<void> {
+    public async popFront(): Promise<void> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return;
@@ -155,7 +181,7 @@ export class ArrayDeque {
     /**
      * 弹出队尾 
      */
-    public async popLast(): Promise<void> {
+    public async popBack(): Promise<void> {
         if (this.isEmpty()) {
             messageController.message("队列为空", MessageType.ERROR);
             return;
