@@ -28,6 +28,16 @@ Kruskal算法（夜间模式）：
 # 使用方法
 
 ## 使用项目
+
+浏览器版本要求
+| 浏览器名称 | 版本要求 | 建议 |
+| --- | --- | --- |
+| Chrome | 111+ | 最新稳定版 |
+| Edge | 111+ | 最新稳定版 |
+| Firefox | 114+ | 最新稳定版或ESR115+ |
+| Safari（macOS） | 16.4+ | 最新稳定版 |
+| Safari（iOS/iPadOS） | 16.4+ | 最新稳定版 |
+
 下载[Release](https://github.com/zhwesh/DSvisualizer/releases)包并解压后，双击内部文件`index.html`即可运行。
 
 ## 源码下载与构建

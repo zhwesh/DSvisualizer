@@ -22,6 +22,7 @@ interface CommandHelp {
 const props = defineProps<{
     lines: CommandLine[];
     help: CommandHelp;
+    running: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -70,7 +71,14 @@ const submit = (): void => {
 
 const onKeydown = (event: KeyboardEvent): void => {
     if (event.isComposing || event.keyCode === 229) return;
+    const hasText = input.value.trim() !== '';
     if (event.key === 'Enter' && !event.shiftKey) {
+        if (!hasText) {
+            if (!props.running) {
+                event.preventDefault();
+            }
+            return;
+        }
         event.preventDefault();
         submit();
         return;

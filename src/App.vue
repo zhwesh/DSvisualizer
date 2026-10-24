@@ -1149,10 +1149,15 @@ const handleStep = (): void => {
 
 const handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (event.repeat || event.isComposing || event.defaultPrevented || !opRunning.value) return;
+    const overCommandPanel = document.querySelector<HTMLElement>('.command-panel')?.matches(':hover') === true;
     const target = event.target;
-    if (target instanceof HTMLElement &&
-        target.closest('input, textarea, select, button, [contenteditable="true"], [role="button"], [role="separator"]')) {
-        return;
+    if (target instanceof HTMLElement) {
+        const commandInput = target.closest<HTMLTextAreaElement>('.command-input');
+        if (commandInput !== null && commandInput.value.trim() !== '') return;
+        const textEditing = target.closest('input, textarea, select, [contenteditable="true"]');
+        if (textEditing !== null && commandInput === null) return;
+        const interactive = target.closest('button, [role="button"], [role="separator"]');
+        if (interactive !== null && !overCommandPanel) return;
     }
     if (settingsOpen.value || pageInfoOpen.value ||
         document.querySelector('.dialog-overlay, .command-help-overlay') !== null) {
@@ -4274,6 +4279,7 @@ onBeforeUnmount(() => {
                 :style="commandStyle"
                 :lines="commandLines"
                 :help="commandHelp"
+                :running="opRunning"
                 @submit="handleCommand"
                 @clear="clearCommandLines"
             />

@@ -83,9 +83,6 @@ export class TreeVisualizer extends BaseVisualizer {
     // 是否已经排入一次树重绘（同一批原子操作只重绘一次）
     private renderQueued: boolean = false;
     private queuedRenderDuration: number = 0;
-    // 同一次算法步骤内发生旋转的节点，重绘后统一闪烁，
-    // 避免旋转、_set_left/_set_right 各自排队导致多次完整渲染。
-    private rotationFlashIds: Set<number> = new Set();
     private trieRenderQueued: boolean = false;
 
     private static readonly NODE_RADIUS = 15;
@@ -145,9 +142,6 @@ export class TreeVisualizer extends BaseVisualizer {
                 break;
             case '_rotate_left':
             case '_rotate_right':
-                // 旋转往往紧跟 _set_left/_set_right，统一合并成一次重绘，
-                // 只保留一次短动画，避免一次旋转产生多段等待。
-                this.rotationFlashIds.add(treeNode.getId());
                 this.enqueueRender(220);
                 break;
             case '_delete':
@@ -215,13 +209,9 @@ export class TreeVisualizer extends BaseVisualizer {
         this.renderQueued = true;
         this.animations.enqueue(async () => {
             const wait = this.queuedRenderDuration;
-            const flashIds = [...this.rotationFlashIds];
             this.queuedRenderDuration = 0;
             this.renderQueued = false;
-            this.rotationFlashIds.clear();
-            // 有旋转时冻结 viewBox，避免整棵树在旋转过程中缩放跳动
-            this.render(flashIds.length === 0);
-            flashIds.forEach(id => this.flashNode(id));
+            this.render();
             await this.delay(wait);
         });
     }
@@ -321,22 +311,6 @@ export class TreeVisualizer extends BaseVisualizer {
         if (root instanceof BinaryTreeNode) {
             this.nodes.set(root.getId(), root);
         }
-    }
-
-    /**
-     * 闪烁节点（旋转高亮）
-     */
-    private flashNode(id: number): void {
-        const g = this.mainGroup.select(`.tree-node[data-id="${id}"]`);
-        if (g.empty()) return;
-        g.select('circle:not(.node-visit-ring)')
-            .transition()
-            .duration(this.duration(90))
-            .attr('stroke', COLOR_FLASH)
-            .attr('stroke-width', 4)
-            .transition()
-            .duration(this.duration(130))
-            .attr('stroke', () => '#666');
     }
 
     /**
@@ -1106,7 +1080,6 @@ export class TreeVisualizer extends BaseVisualizer {
         this.rebuildHiddenIds.clear();
         this.renderQueued = false;
         this.queuedRenderDuration = 0;
-        this.rotationFlashIds.clear();
         this.trieRenderQueued = false;
     }
 }
